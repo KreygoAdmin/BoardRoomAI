@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './supabaseClient'; 
+import Auth from './Auth'; 
 import { 
   Gavel, 
   Users, 
@@ -8,34 +10,35 @@ import {
   RotateCcw, 
   BrainCircuit, 
   ChevronRight, 
-  Shuffle,
-  ListOrdered,
-  Sparkles,
-  ClipboardList,
-  Edit,
-  Plus,
-  Trash2,
-  X,
-  Save,
-  Menu,
-  AlertTriangle,
-  ShieldAlert,
-  Key
+  Shuffle, 
+  ListOrdered, 
+  Sparkles, 
+  ClipboardList, 
+  Edit, 
+  Plus, 
+  Trash2, 
+  X, 
+  Save, 
+  Menu, 
+  AlertTriangle, 
+  ShieldAlert, 
+  Key, 
+  LogOut,
+  Volume2,
+  MessageSquare,
+  CloudUpload,
+  Globe 
 } from 'lucide-react';
 
 /* ===================================================================
   BOARDROOM SIMULATOR - MULTI-AGENT ORCHESTRATION SYSTEM
-  
-  Features:
-  - Mobile Friendly (Responsive Sidebar)
-  - Rate Limit Protection (Exponential Backoff + Jitter)
-  - Paced Execution (Delays between agents)
-  - Hybrid API Key Handling
-  ===================================================================
-*/
+  =================================================================== */
 
 // System default key (injected by environment)
 const systemApiKey = ""; 
+
+// --- STRIPE CONFIGURATION ---
+const STRIPE_LINK = "https://buy.stripe.com/test_cNi4gybECaEi17N0or0Jq00";
 
 // --- Default Personas ---
 const DEFAULT_BOARD = [
@@ -86,23 +89,99 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // --- Main Component ---
 export default function App() {
-  // State: Conversation & Logic
+  // --- SESSION STATE ---
+  const [session, setSession] = useState(null);
+
+  // --- Auth & Plan Listener ---
+  useEffect(() => {
+    // 1. Get Session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchUserPlan(session.user.id); 
+    });
+
+    // 2. Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchUserPlan(session.user.id); 
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- Payment Success Listener ---
+  useEffect(() => {
+    // 1. Check for the "upgraded" flag in the URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('upgraded') === 'true') {
+        
+        // 2. Celebration Alert
+        alert("PAYMENT SUCCESSFUL! \n\nWelcome to the Pioneer Plan. (Please wait for admin to provision your account).");
+        
+        // 3. Clean the URL (Remove the ?upgraded=true so it doesn't trigger again on refresh)
+        window.history.replaceState({}, document.title, "/");
+        
+        // 4. (Optional) Force local unlock for this session
+        setUserPlan('pioneer'); 
+    }
+  }, []);
+
+  // --- Helper Function to get the plan ---
+  const fetchUserPlan = async (userId) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('plan')
+      .eq('id', userId)
+      .single();
+
+    if (data) {
+        console.log("User Plan Loaded:", data.plan); 
+        setUserPlan(data.plan);
+    } else {
+        console.error("Error fetching plan:", error);
+    }
+  };
+
+  // --- APP STATE ---
+
+  // Plan State
+  const [userPlan, setUserPlan] = useState('free'); // Default to free (safe mode)
+
+  // Persistence State
+  const [boardId, setBoardId] = useState(null);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  // Conversation & Logic
   const [messages, setMessages] = useState([]);
   const [userInput, setUserInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStage, setProcessingStage] = useState(""); 
   const [retryStatus, setRetryStatus] = useState(null); 
   
-  // Turn Modes
-  const [turnMode, setTurnMode] = useState("smart"); 
-  const [lastSpeakerIndex, setLastSpeakerIndex] = useState(-1);
-
-  // State: Board & Context
+  // Board & Context
   const [boardMembers, setBoardMembers] = useState(DEFAULT_BOARD);
-  const [whiteboardFacts, setWhiteboardFacts] = useState("Project: 'Project Alpha'\nGoal: Launch a new AI boardroom app\nBudget: $1k\nTimeline: unknown");
+  const [whiteboardFacts, setWhiteboardFacts] = useState(() => {
+    const now = new Date();
+    const timeStr = now.toLocaleString('en-US', {
+      timeZone: 'America/Chicago',
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `Session Start: ${timeStr} CST\n\nProject: 'Project Alpha'\nGoal: Launch a new AI boardroom app\nBudget: $1k\nTimeline: unknown`;
+  });
   
   // API Key State
   const [customApiKey, setCustomApiKey] = useState("");
+
+  // --- NEW: Marketplace State ---
+  const [showMarketplace, setShowMarketplace] = useState(false);
+  const [marketAgents, setMarketAgents] = useState([]);
+  const [isLoadingMarket, setIsLoadingMarket] = useState(false);
 
   const [minutes, setMinutes] = useState({
     consensus: "None yet.",
@@ -111,30 +190,145 @@ export default function App() {
     actionItems: ["Define project scope"]
   });
 
-  // State: UI
+  // UI State
   const [showSettings, setShowSettings] = useState(false);
   const [showMemberConfig, setShowMemberConfig] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
+  // --- DATA PERSISTENCE (LOAD) ---
+  useEffect(() => {
+    if (!session) return;
+
+    const loadBoard = async () => {
+      const { data, error } = await supabase
+        .from('boardrooms')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error loading board:", error);
+      }
+
+      if (data) {
+        console.log("Board loaded!", data);
+        setBoardId(data.id);
+        setBoardMembers(data.members);     
+        setMessages(data.messages);    
+        setWhiteboardFacts(data.whiteboard);
+        
+        if (data.settings && data.settings.customApiKey) {
+            setCustomApiKey(data.settings.customApiKey);
+        }
+      }
+    };
+
+    loadBoard();
+  }, [session]);
+
+  // --- SCROLL EFFECT ---
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, retryStatus]);
 
+  // --- GATEKEEPER (Safe Return) ---
+  if (!session) {
+    return <Auth />;
+  }
+
+  // --- DATA PERSISTENCE (SAVE) ---
+  const handleSaveBoard = async () => {
+    setSaveStatus("Saving...");
+    
+    const payload = {
+      user_id: session.user.id,
+      name: 'Project Alpha',
+      whiteboard: whiteboardFacts,
+      members: boardMembers,
+      messages: messages,
+      settings: {
+          customApiKey: customApiKey
+      }
+    };
+
+    try {
+      if (boardId) {
+        // Update existing
+        const { error } = await supabase
+          .from('boardrooms')
+          .update(payload)
+          .eq('id', boardId);
+        if (error) throw error;
+      } else {
+        // Insert new
+        const { data, error } = await supabase
+          .from('boardrooms')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) setBoardId(data.id);
+      }
+      setSaveStatus("Saved!");
+      setTimeout(() => setSaveStatus(""), 2000);
+    } catch (error) {
+      console.error("Save failed:", error);
+      setSaveStatus("Error!");
+    }
+  };
+
+  // --- NEW: Reset / New Meeting Logic ---
+  const handleResetBoard = async () => {
+    // 1. Confirm with user (Destructive Action)
+    const confirm = window.confirm("Start a new meeting?\n\nThis will clear the chat history and minutes, but keep your Board Members and Whiteboard facts.");
+    if (!confirm) return;
+
+    setIsProcessing(true); // Lock UI while resetting
+
+    // 2. Reset Local State
+    setMessages([]);
+    setMinutes({
+      consensus: "None yet.",
+      friction: "None yet.",
+      momentum: "Neutral",
+      actionItems: ["Define project scope"]
+    });
+    
+    // 3. Reset Database (Crucial step!)
+    if (session && boardId) {
+        const { error } = await supabase
+            .from('boardrooms')
+            .update({ 
+                messages: [] // Wipe the chat column in DB
+            })
+            .eq('id', boardId);
+
+        if (error) {
+            console.error("Reset DB Error:", error);
+            alert("Local reset done, but database update failed.");
+        }
+    }
+    
+    // 4. Add a "Fresh Start" marker
+    setMessages([{ role: 'system', text: "New session started. The Board is ready.", type: 'alert' }]);
+    setIsProcessing(false);
+  };
+
   // --- API CALLER ---
   const callGemini = async (prompt, systemInstruction = "You are a helpful AI.") => {
     let retries = 0;
-    const maxRetries = 4; // Sufficient retry count
-    const baseDelay = 2000; // Start with 2 seconds minimum wait
-
-    // Use custom key if provided, otherwise fallback to system key
+    const maxRetries = 4; 
+    const baseDelay = 2000;
     const activeKey = customApiKey || systemApiKey;
 
     while (retries < maxRetries) {
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${activeKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -146,21 +340,15 @@ export default function App() {
           }
         );
 
-        if (response.status === 403) {
-            throw new Error("INVALID_KEY");
-        }
-
-        if (response.status === 429 || response.status === 503) {
-          throw new Error("RATE_LIMIT");
-        }
-
+        if (response.status === 403) throw new Error("INVALID_KEY");
+        if (response.status === 429 || response.status === 503) throw new Error("RATE_LIMIT");
         if (!response.ok) throw new Error(`HTTP_${response.status}`);
         
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!text && data.candidates?.[0]?.finishReason === "SAFETY") {
-             return "I cannot respond to that due to safety guidelines.";
+              return "I cannot respond to that due to safety guidelines.";
         }
         if (!text) throw new Error("EMPTY_RESPONSE");
         
@@ -170,7 +358,7 @@ export default function App() {
       } catch (error) {
         if (error.message === "INVALID_KEY") {
             setRetryStatus("Error: Invalid or missing API Key. Please check Settings.");
-            return null; // Don't retry on auth errors
+            return null;
         }
 
         const isRateLimit = error.message === "RATE_LIMIT" || (error.message && error.message.includes("429"));
@@ -183,7 +371,6 @@ export default function App() {
           return null;
         }
 
-        // Exponential Backoff with Jitter: 2s, 4s, 8s... + random(0-1000ms)
         const delay = (Math.pow(2, retries) * baseDelay) + (Math.random() * 1000);
         
         if (isRateLimit) {
@@ -201,8 +388,65 @@ export default function App() {
 
   // --- Logic Functions ---
 
+  // --- NEW: Manual Trigger ---
+  const handleForceTrigger = async (member) => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    setRetryStatus(null);
+
+    // 1. Add a system note so the transcript makes sense
+    const triggerMsg = { role: 'system', sender: 'Chair', text: `The Chair calls on ${member.role}.`, type: 'alert' };
+    setMessages(prev => [...prev, triggerMsg]);
+
+    try {
+      // 2. Director Briefing (Forced)
+      setProcessingStage(`Briefing ${member.role}...`);
+      
+      // We pass the member as the 'forcedSpeaker'
+      const briefing = await runDirectorAgent(messages, triggerMsg, minutes, boardMembers, whiteboardFacts, member);
+
+      // 3. The Agent Speaks
+      await sleep(1000);
+      setProcessingStage(`${member.role} is speaking...`);
+      
+      const agentResponse = await runBoardMemberAgent(briefing);
+      
+      const agentMsg = {
+        role: 'assistant',
+        sender: briefing.nextSpeakerName,
+        text: agentResponse,
+        type: 'chat',
+        avatar: briefing.nextSpeakerAvatar
+      };
+
+      setMessages(prev => [...prev, agentMsg]);
+
+      // Update Vibes (Reusing existing logic)
+      setProcessingStage("Analyzing impact...");
+      await runAlignmentAgent(agentMsg, boardMembers);
+
+    } catch (error) {
+      console.error("Force Trigger Error:", error);
+    } finally {
+      setIsProcessing(false);
+      setProcessingStage("");
+    }
+  };
+
   const handleUserTurn = async () => {
     if (!userInput.trim()) return;
+
+    // --- NEW: Message Limit Check ---
+    if (userPlan === 'free' && messages.length >= 30) {
+        setMessages(prev => [...prev, {
+            role: 'system',
+            text: "🔒 FREE PLAN LIMIT REACHED (30 Messages). Upgrade to Pioneer to continue.",
+            type: 'error'
+        }]);
+        setUserInput(""); // Clear the input so they don't keep clicking
+        return; // Stop here. Do not call Gemini.
+    }
+    // --------------------------------
 
     const userMsg = { role: 'user', sender: 'User', text: userInput, type: 'chat' };
     setMessages(prev => [...prev, userMsg]);
@@ -211,52 +455,37 @@ export default function App() {
     setRetryStatus(null);
 
     try {
-      // 1. Secretary
       setProcessingStage("The Secretary is taking minutes...");
       const updatedMinutes = await runSecretaryAgent(messages, userMsg, minutes);
       setMinutes(updatedMinutes);
       
-      // PAUSE 1: Give API breathing room
       await sleep(1500);
 
-      // 2. Turn Logic
-      let forcedSpeaker = null;
-      if (turnMode === 'sequential') {
-        const nextIdx = (lastSpeakerIndex + 1) % boardMembers.length;
-        setLastSpeakerIndex(nextIdx);
-        forcedSpeaker = boardMembers[nextIdx];
-      } else if (turnMode === 'chaos') {
-        const randIdx = Math.floor(Math.random() * boardMembers.length);
-        setLastSpeakerIndex(randIdx);
-        forcedSpeaker = boardMembers[randIdx];
-      }
+      setProcessingStage("Analyzing board reaction...");
+      await runAlignmentAgent(userMsg, boardMembers);
 
-      // 3. Director
-      setProcessingStage(forcedSpeaker ? `Briefing ${forcedSpeaker.role}...` : "Director is choosing...");
-      const briefing = await runDirectorAgent(messages, userMsg, updatedMinutes, boardMembers, whiteboardFacts, forcedSpeaker);
+      // Director decides who speaks next (Standard Flow)
+      setProcessingStage("Director is choosing...");
+      const briefing = await runDirectorAgent(messages, userMsg, updatedMinutes, boardMembers, whiteboardFacts, null);
 
-      if (turnMode === 'smart') {
-         const pickedIdx = boardMembers.findIndex(m => m.role === briefing.nextSpeaker);
-         if (pickedIdx >= 0) setLastSpeakerIndex(pickedIdx);
-      }
-      
-      // PAUSE 2: Give API breathing room
       await sleep(1500);
 
-      // 4. Board Member
       if (briefing.nextSpeaker) {
         setProcessingStage(`${briefing.nextSpeaker} is speaking...`);
         const agentResponse = await runBoardMemberAgent(briefing);
         
-        setMessages(prev => [...prev, {
+        const agentMsg = {
           role: 'assistant',
           sender: briefing.nextSpeakerName,
           text: agentResponse,
           type: 'chat',
           avatar: briefing.nextSpeakerAvatar
-        }]);
+        };
+        
+        setMessages(prev => [...prev, agentMsg]);
 
-        updateVibes(updatedMinutes);
+        setProcessingStage("Analyzing impact on board...");
+        await runAlignmentAgent(agentMsg, boardMembers);
       }
 
     } catch (error) {
@@ -280,7 +509,6 @@ export default function App() {
         setProcessingStage(`Polling ${member.role}...`);
         const vote = await runVotingAgent(member, minutes, whiteboardFacts);
         results.push(vote);
-        // INCREASED DELAY: Slower voting to avoid rate limits
         await sleep(2000); 
       }
       
@@ -383,23 +611,57 @@ export default function App() {
     return await callGemini(prompt, "You are the Secretary.") || "Resolution unavailable.";
   };
 
-  const updateVibes = (mins) => {
-    const isNegative = mins.momentum.toLowerCase().includes('negative') || mins.friction.length > 50;
-    setBoardMembers(prev => prev.map(m => {
-      let shift = Math.floor(Math.random() * 10) - 5;
-      if (isNegative && m.role === 'CFO') shift -= 10;
-      if (!isNegative && m.role === 'CMO') shift += 10;
-      return { ...m, stats: { ...m.stats, agreement: Math.min(100, Math.max(0, m.stats.agreement + shift)) } };
-    }));
+  const runAlignmentAgent = async (lastMsg, members) => {
+    const prompt = `
+      Message: "${lastMsg.sender} says: ${lastMsg.text}"
+      Board Members & Motivations:
+      ${members.map(m => `- ${m.role} (${m.name}): ${m.description}`).join('\n')}
+      Task: Analyze impact on agreement (0-100) of EACH member.
+      Return JSON array of objects with 'role' and 'delta' (-15 to +15).
+    `;
+    const result = await callGemini(prompt, "You are an AI Analyst. Output purely JSON.");
+    if (result) {
+      try {
+        const jsonMatch = result.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const adjustments = JSON.parse(jsonMatch[0]);
+          setBoardMembers(prev => prev.map(member => {
+            const adj = adjustments.find(a => a.role === member.role || a.role === member.name);
+            if (adj) {
+              const newScore = Math.min(100, Math.max(0, member.stats.agreement + adj.delta));
+              return { ...member, stats: { ...member.stats, agreement: newScore } };
+            }
+            return member;
+          }));
+        }
+      } catch (e) {}
+    }
+  };
+
+  const speakText = (text) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.speak(utterance);
+    }
   };
 
   // --- Shared Logic ---
   const handleEditMember = (member) => setEditingMember({ ...member });
   
-  const handleCreateMember = () => setEditingMember({
-    id: Date.now().toString(), name: 'New Member', role: 'Advisor', avatar: 'bg-gray-600',
-    description: 'New member description.', stats: { agreement: 50, aggression: 50 }
-  });
+  const handleCreateMember = () => {
+    // --- NEW: Limit Check ---
+    if (userPlan === 'free' && boardMembers.length >= 3) {
+        alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
+        return;
+    }
+    // ------------------------
+
+    setEditingMember({
+      id: Date.now().toString(), name: 'New Member', role: 'Advisor', avatar: 'bg-gray-600',
+      description: 'New member description.', stats: { agreement: 50, aggression: 50 }
+    });
+  };
   
   const handleSaveMember = () => {
     if (!editingMember) return;
@@ -413,6 +675,86 @@ export default function App() {
   const handleDeleteMember = (id) => {
     setBoardMembers(prev => prev.filter(m => m.id !== id));
     if (editingMember?.id === id) setEditingMember(null);
+  };
+
+  // --- NEW: Publish to Marketplace ---
+  const handlePublishMember = async () => {
+    if (!editingMember || !session) return;
+    
+    const confirm = window.confirm(`Are you sure you want to publish "${editingMember.role}" to the public marketplace?`);
+    if (!confirm) return;
+
+    setProcessingStage("Publishing...");
+    
+    // Create a clean copy for the market
+    const payload = {
+      user_id: session.user.id,
+      name: editingMember.name,
+      role: editingMember.role,
+      description: editingMember.description,
+      avatar: editingMember.avatar,
+      stats: editingMember.stats
+    };
+
+    const { error } = await supabase
+      .from('market_agents')
+      .insert(payload);
+
+    if (error) {
+      alert("Error publishing: " + error.message);
+    } else {
+      alert("Success! Your agent is now in the Marketplace.");
+    }
+    setProcessingStage("");
+  };
+
+  // --- NEW: Marketplace Logic ---
+  const loadMarketplace = async () => {
+    setIsLoadingMarket(true);
+    setShowMarketplace(true); // Switch view to market
+    
+    const { data, error } = await supabase
+      .from('market_agents')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50); // Just the latest 50 for now
+
+    if (error) console.error("Market error:", error);
+    else setMarketAgents(data || []);
+    
+    setIsLoadingMarket(false);
+  };
+
+  // --- UPDATE: Async Download & Count ---
+  const handleDownloadAgent = async (agent) => {
+    // --- NEW: Limit Check ---
+    if (userPlan === 'free' && boardMembers.length >= 3) {
+        alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
+        return;
+    }
+    // ------------------------
+
+    // 1. Check if we already have this role
+    const exists = boardMembers.find(m => m.role === agent.role);
+    if (exists) {
+        alert(`You already have a ${agent.role}! Rename yours first.`);
+        return;
+    }
+
+    // 2. Add to local board (with a new ID so it's unique)
+    const newMember = {
+      ...agent,
+      id: Date.now().toString(), // Give it a fresh local ID
+      user_id: session.user.id   // Now it belongs to you
+    };
+
+    setBoardMembers(prev => [...prev, newMember]);
+    alert(`Deployed ${agent.role} to your boardroom.`);
+    setShowMemberConfig(false); // Close modal
+
+    // 3. --- NEW: Increment Counter in Background ---
+    const { error } = await supabase.rpc('increment_downloads', { row_id: agent.id });
+    if (error) console.error("Failed to count download:", error);
   };
   
   const handleIntervention = () => {
@@ -466,7 +808,16 @@ export default function App() {
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white mr-3 shadow-lg ${msg.avatar || 'bg-gray-600'}`}>{msg.sender[0]}</div>
         )}
         <div className={`max-w-[85%] sm:max-w-[75%] p-3 rounded-lg text-sm shadow-md ${isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-800 border border-gray-700 text-gray-200 rounded-bl-none'}`}>
-          <div className="text-xs font-bold opacity-50 mb-1">{msg.sender}</div>
+          <div className="flex items-center justify-between gap-2 mb-1">
+             <div className="text-xs font-bold opacity-50">{msg.sender}</div>
+             <button 
+               onClick={() => speakText(msg.text)}
+               className="opacity-50 hover:opacity-100 transition-opacity p-1 hover:text-indigo-300"
+               title="Read aloud"
+             >
+               <Volume2 size={12} />
+             </button>
+          </div>
           {msg.text}
         </div>
       </div>
@@ -480,13 +831,33 @@ export default function App() {
 
       {/* Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-30 w-80 bg-gray-900/95 backdrop-blur shadow-2xl border-r border-gray-800 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center gap-2 justify-between md:justify-start">
+        <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white"><Users size={16} /></div>
             <h1 className="font-bold text-white tracking-wider text-sm">BOARDROOM<br/><span className="text-xs text-indigo-400 font-normal">SIMULATOR</span></h1>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400"><X size={20} /></button>
+          {/* Close for mobile, Save for desktop */}
+          <div className="flex items-center gap-2">
+             {/* --- NEW: Reset Button --- */}
+             <button 
+                onClick={handleResetBoard} 
+                disabled={isProcessing} 
+                className="flex items-center gap-2 px-3 py-1.5 bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900 rounded text-xs transition-colors disabled:opacity-50 mr-2"
+                title="Clear Chat & Restart"
+             >
+               <RotateCcw size={14} /> <span className="hidden sm:inline">Reset</span>
+             </button>
+             {/* ------------------------- */}
+            <button onClick={handleSaveBoard} className="text-gray-400 hover:text-green-400 transition-colors" title="Save Game">
+                {saveStatus === "Saving..." ? <RotateCcw size={18} className="animate-spin text-yellow-400"/> : <CloudUpload size={18} />}
+            </button>
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400"><X size={20} /></button>
+          </div>
         </div>
+        
+        {saveStatus === "Saved!" && <div className="bg-green-900/50 text-green-300 text-xs text-center py-1">Session Saved Successfully</div>}
+        {saveStatus === "Error!" && <div className="bg-red-900/50 text-red-300 text-xs text-center py-1">Save Failed</div>}
+
         <div className="p-4 flex-1 overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><FileText size={12} /> The Whiteboard</h2>
@@ -504,17 +875,19 @@ export default function App() {
               <div className="border-t border-gray-700 pt-3">
                  <label className="text-[10px] font-bold text-indigo-400 uppercase flex items-center gap-1 mb-1"><Key size={10}/> Custom API Key</label>
                  <input 
-                    type="password"
-                    className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-xs text-gray-300 focus:border-indigo-500 outline-none"
-                    value={customApiKey}
-                    onChange={(e) => setCustomApiKey(e.target.value)}
-                    placeholder="Paste Gemini API key here..."
+                   type="password"
+                   className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-xs text-gray-300 focus:border-indigo-500 outline-none"
+                   value={customApiKey}
+                   onChange={(e) => setCustomApiKey(e.target.value)}
+                   placeholder="Paste Gemini API key here..."
                  />
-                 <div className="text-[10px] text-gray-500 mt-1 italic">Leave empty to use system default.</div>
+                 <div className="text-[10px] text-gray-500 mt-1 italic">Saved to account settings.</div>
               </div>
             </div>
           ) : (
-            <div className="bg-gray-900/50 border border-gray-800 p-3 rounded text-xs text-gray-400 whitespace-pre-wrap font-mono mb-4">{whiteboardFacts}</div>
+            <div className="bg-gray-900/50 border border-gray-800 p-3 rounded text-xs text-gray-400 whitespace-pre-wrap font-mono mb-4">
+              {whiteboardFacts}
+            </div>
           )}
           <div className="mt-2 space-y-4">
             <h2 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><BrainCircuit size={12} /> The Secretary's Minutes</h2>
@@ -545,17 +918,63 @@ export default function App() {
           </div>
           <div className="space-y-3">
             {boardMembers.map(m => (
-              <div key={m.id}>
-                <div className="flex justify-between text-[10px] mb-1">
-                  <span className="text-white font-medium">{m.role}</span>
-                  <span className={m.stats.agreement > 50 ? "text-green-400" : "text-red-400"}>{m.stats.agreement}%</span>
+              <div key={m.id} className="group flex items-center justify-between p-2 hover:bg-gray-800 rounded transition-colors">
+                {/* Member Info */}
+                <div className="flex-1">
+                  <div className="flex justify-between text-[10px] mb-1">
+                    <span className="text-white font-medium">{m.role}</span>
+                    <span className={m.stats.agreement > 50 ? "text-green-400" : "text-red-400"}>{m.stats.agreement}%</span>
+                  </div>
+                  <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden mb-1">
+                    <div className={`h-full transition-all duration-500 ${m.stats.agreement > 50 ? 'bg-green-600' : 'bg-red-600'}`} style={{ width: `${m.stats.agreement}%` }} />
+                  </div>
                 </div>
-                <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
-                  <div className={`h-full transition-all duration-500 ${m.stats.agreement > 50 ? 'bg-green-600' : 'bg-red-600'}`} style={{ width: `${m.stats.agreement}%` }} />
-                </div>
+                
+                {/* NEW: Force Speak Button (Visible on Hover) */}
+                <button 
+                    onClick={() => handleForceTrigger(m)}
+                    disabled={isProcessing}
+                    className="ml-3 opacity-0 group-hover:opacity-100 p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded shadow-lg transition-all transform hover:scale-105 disabled:opacity-0"
+                    title={`Force ${m.role} to speak`}
+                >
+                    <ChevronRight size={14} />
+                </button>
               </div>
             ))}
           </div>
+        </div>
+        
+        {/* User Profile & Sign Out */}
+        <div className="p-4 border-t border-gray-800 bg-gray-900 mt-auto">
+            {/* --- NEW: Plan Status --- */}
+            <div className="mb-4">
+                {userPlan === 'free' ? (
+                    <button 
+                        onClick={() => window.location.href = STRIPE_LINK} 
+                        className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded text-xs shadow-lg transform transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                    >
+                        <Sparkles size={14} fill="white" /> UPGRADE TO PIONEER
+                    </button>
+                ) : (
+                    <div className="w-full py-2 bg-gray-800 border border-yellow-600/30 text-yellow-500 font-bold rounded text-xs flex items-center justify-center gap-2">
+                        <Sparkles size={14} /> PIONEER MEMBER
+                    </div>
+                )}
+            </div>
+            {/* ------------------------- */}
+            
+            <div className="flex items-center justify-between">
+                <div className="text-xs text-gray-400 truncate max-w-[150px]">
+                    {session?.user?.email}
+                </div>
+                <button 
+                    onClick={() => supabase.auth.signOut()}
+                    className="text-gray-500 hover:text-red-400 transition-colors"
+                    title="Sign Out"
+                >
+                    <LogOut size={16} />
+                </button>
+            </div>
         </div>
       </div>
 
@@ -564,16 +983,6 @@ export default function App() {
         <div className="h-14 border-b border-gray-800 flex items-center justify-between px-4 sm:px-6 bg-gray-900/80 backdrop-blur-sm z-10">
           <div className="flex items-center gap-2">
               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-gray-400 mr-2"><Menu size={20} /></button>
-              <div className="flex bg-gray-800 rounded p-1">
-                 {['smart', 'sequential', 'chaos'].map(mode => (
-                   <button key={mode} onClick={() => setTurnMode(mode)} className={`px-2 sm:px-3 py-1 rounded text-xs font-medium flex items-center gap-1 sm:gap-2 transition-all ${turnMode === mode ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
-                      {mode === 'smart' && <Sparkles size={12} />}
-                      {mode === 'sequential' && <ListOrdered size={12} />}
-                      {mode === 'chaos' && <Shuffle size={12} />}
-                      <span className="hidden sm:inline capitalize">{mode}</span>
-                   </button>
-                 ))}
-              </div>
           </div>
           <div className="flex gap-2">
              <button onClick={handleIntervention} className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900 rounded text-xs transition-colors">
@@ -632,57 +1041,111 @@ export default function App() {
         {showMemberConfig && (
           <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8">
             <div className="bg-gray-900 border border-gray-700 w-full md:max-w-4xl h-[90vh] md:h-[600px] rounded-lg shadow-2xl flex flex-col overflow-hidden">
-              <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white flex items-center gap-2"><Users size={18} /> Manage Board</h2>
-                <button onClick={() => setShowMemberConfig(false)} className="text-gray-400 hover:text-white"><X size={20} /></button>
-              </div>
-              <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-                <div className="w-full md:w-1/3 h-48 md:h-auto border-b md:border-b-0 md:border-r border-gray-800 bg-gray-900/50 flex flex-col">
-                  <div className="p-2 overflow-y-auto flex-1 space-y-2">
-                    {boardMembers.map(m => (
-                      <div key={m.id} onClick={() => handleEditMember(m)} className={`p-3 rounded cursor-pointer border transition-all ${editingMember?.id === m.id ? 'bg-indigo-900/30 border-indigo-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-6 h-6 rounded-full ${m.avatar} flex items-center justify-center text-[10px] font-bold text-white`}>{m.role[0]}</div>
-                            <div><div className="text-sm font-bold text-gray-200">{m.role}</div><div className="text-xs text-gray-500">{m.name}</div></div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-4 border-t border-gray-800">
-                    <button onClick={handleCreateMember} className="w-full py-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-xs font-bold text-gray-300 flex items-center justify-center gap-2"><Plus size={14} /> Add New Member</button>
-                  </div>
+              
+              {/* MODAL HEADER WITH TABS */}
+              <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
+                <div className="flex gap-4">
+                    <button 
+                        onClick={() => setShowMarketplace(false)} 
+                        className={`text-sm font-bold flex items-center gap-2 ${!showMarketplace ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        <Users size={18} /> Your Board
+                    </button>
+                    <div className="w-px h-5 bg-gray-700"></div>
+                    <button 
+                        onClick={loadMarketplace} 
+                        className={`text-sm font-bold flex items-center gap-2 ${showMarketplace ? 'text-indigo-400' : 'text-gray-500 hover:text-indigo-300'}`}
+                    >
+                        <Globe size={18} /> Marketplace
+                    </button>
                 </div>
-                <div className="flex-1 bg-gray-950 p-6 overflow-y-auto">
-                  {editingMember ? (
-                    <div className="space-y-4">
-                      <div className="flex gap-4">
-                        <div className="flex-1">
-                          <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Name</label>
-                          <input type="text" className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white focus:border-indigo-500 outline-none" value={editingMember.name} onChange={(e) => setEditingMember({...editingMember, name: e.target.value})} />
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Role</label>
-                          <input type="text" className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white focus:border-indigo-500 outline-none" value={editingMember.role} onChange={(e) => setEditingMember({...editingMember, role: e.target.value})} />
-                        </div>
+                <button onClick={() => { setShowMemberConfig(false); setShowMarketplace(false); }} className="text-gray-400 hover:text-white"><X size={20} /></button>
+              </div>
+
+              {showMarketplace ? (
+                // --- MARKETPLACE VIEW ---
+                <div className="p-6 overflow-y-auto bg-gray-950 flex-1">
+                    {isLoadingMarket && <div className="text-center text-gray-500 py-10">Loading agents...</div>}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {marketAgents.map(agent => (
+                            <div key={agent.id} className="bg-gray-900 border border-gray-800 p-4 rounded hover:border-indigo-500 transition-colors">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className={`w-8 h-8 rounded-full ${agent.avatar} flex items-center justify-center text-xs font-bold text-white`}>{agent.role[0]}</div>
+                                    <div className="text-[10px] bg-gray-800 px-2 py-1 rounded text-gray-400">Downloads: {agent.downloads || 0}</div>
+                                </div>
+                                <h3 className="font-bold text-white text-sm">{agent.role}</h3>
+                                <div className="text-xs text-indigo-400 mb-2">{agent.name}</div>
+                                <p className="text-xs text-gray-400 h-16 overflow-hidden mb-4">{agent.description}</p>
+                                <button 
+                                    onClick={() => handleDownloadAgent(agent)}
+                                    className="w-full py-2 bg-indigo-900/30 hover:bg-indigo-600 border border-indigo-900/50 hover:border-indigo-500 text-indigo-200 hover:text-white rounded text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Plus size={14}/> Add to Board
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+              ) : (
+                // --- EXISTING "YOUR BOARD" VIEW ---
+                <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+                    <div className="w-full md:w-1/3 h-48 md:h-auto border-b md:border-b-0 md:border-r border-gray-800 bg-gray-900/50 flex flex-col">
+                      <div className="p-2 overflow-y-auto flex-1 space-y-2">
+                        {boardMembers.map(m => (
+                          <div key={m.id} onClick={() => handleEditMember(m)} className={`p-3 rounded cursor-pointer border transition-all ${editingMember?.id === m.id ? 'bg-indigo-900/30 border-indigo-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'}`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full ${m.avatar} flex items-center justify-center text-[10px] font-bold text-white`}>{m.role[0]}</div>
+                                <div><div className="text-sm font-bold text-gray-200">{m.role}</div><div className="text-xs text-gray-500">{m.name}</div></div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Avatar Color</label>
-                        <div className="flex gap-2">{['bg-blue-600', 'bg-purple-600', 'bg-yellow-600', 'bg-pink-600', 'bg-green-600', 'bg-red-600', 'bg-gray-600'].map(c => (<button key={c} onClick={() => setEditingMember({...editingMember, avatar: c})} className={`w-6 h-6 rounded-full ${c} ${editingMember.avatar === c ? 'ring-2 ring-white' : ''}`} />))}</div>
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase block mb-1">System Instructions</label>
-                        <textarea className="w-full h-40 bg-gray-800 border border-gray-700 rounded p-3 text-sm text-gray-300 focus:border-indigo-500 outline-none leading-relaxed" value={editingMember.description} onChange={(e) => setEditingMember({...editingMember, description: e.target.value})} />
-                      </div>
-                      <div className="pt-4 flex items-center justify-between border-t border-gray-800 mt-8">
-                        <button onClick={() => handleDeleteMember(editingMember.id)} className="text-red-400 hover:text-red-300 text-xs font-bold flex items-center gap-2"><Trash2 size={14} /> Delete</button>
-                        <button onClick={handleSaveMember} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded text-sm font-bold flex items-center gap-2"><Save size={16} /> Save</button>
+                      <div className="p-4 border-t border-gray-800">
+                        <button onClick={handleCreateMember} className="w-full py-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-xs font-bold text-gray-300 flex items-center justify-center gap-2"><Plus size={14} /> Add New Member</button>
                       </div>
                     </div>
-                  ) : <div className="h-full flex flex-col items-center justify-center text-gray-600"><Users size={48} className="mb-4 opacity-50" /><p>Select a member.</p></div>}
+                    <div className="flex-1 bg-gray-950 p-6 overflow-y-auto">
+                      {editingMember ? (
+                        <div className="space-y-4">
+                          <div className="flex gap-4">
+                            <div className="flex-1">
+                              <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Name</label>
+                              <input type="text" className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white focus:border-indigo-500 outline-none" value={editingMember.name} onChange={(e) => setEditingMember({...editingMember, name: e.target.value})} />
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Role</label>
+                              <input type="text" className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white focus:border-indigo-500 outline-none" value={editingMember.role} onChange={(e) => setEditingMember({...editingMember, role: e.target.value})} />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Avatar Color</label>
+                            <div className="flex gap-2">{['bg-blue-600', 'bg-purple-600', 'bg-yellow-600', 'bg-pink-600', 'bg-green-600', 'bg-red-600', 'bg-gray-600'].map(c => (<button key={c} onClick={() => setEditingMember({...editingMember, avatar: c})} className={`w-6 h-6 rounded-full ${c} ${editingMember.avatar === c ? 'ring-2 ring-white' : ''}`} />))}</div>
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">System Instructions</label>
+                            <textarea className="w-full h-40 bg-gray-800 border border-gray-700 rounded p-3 text-sm text-gray-300 focus:border-indigo-500 outline-none leading-relaxed" value={editingMember.description} onChange={(e) => setEditingMember({...editingMember, description: e.target.value})} />
+                          </div>
+                          
+                          {/* --- UPDATE: Member Config Footer --- */}
+                          <div className="pt-4 flex items-center justify-between border-t border-gray-800 mt-8">
+                            <button onClick={() => handleDeleteMember(editingMember.id)} className="text-red-400 hover:text-red-300 text-xs font-bold flex items-center gap-2"><Trash2 size={14} /> Delete</button>
+                            
+                            {/* NEW: Publish Button */}
+                            <button onClick={handlePublishMember} className="text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-2">
+                                <Globe size={14} /> Publish to Market
+                            </button>
+
+                            <button onClick={handleSaveMember} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded text-sm font-bold flex items-center gap-2"><Save size={16} /> Save</button>
+                          </div>
+
+                        </div>
+                      ) : <div className="h-full flex flex-col items-center justify-center text-gray-600"><Users size={48} className="mb-4 opacity-50" /><p>Select a member.</p></div>}
+                    </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
