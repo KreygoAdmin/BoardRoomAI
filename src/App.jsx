@@ -27,7 +27,8 @@ import {
   Volume2,
   MessageSquare,
   CloudUpload,
-  Globe 
+  Globe,
+  Loader2 
 } from 'lucide-react';
 
 /* ===================================================================
@@ -38,7 +39,7 @@ import {
 const systemApiKey = ""; 
 
 // --- STRIPE CONFIGURATION ---
-const STRIPE_LINK = "https://buy.stripe.com/test_cNi4gybECaEi17N0or0Jq00";
+const STRIPE_LINK = "https://buy.stripe.com/cNi4gybECaEi17N0or0Jq00";
 
 // --- Default Personas ---
 const DEFAULT_BOARD = [
@@ -92,6 +93,11 @@ export default function App() {
   // --- SESSION STATE ---
   const [session, setSession] = useState(null);
 
+  // --- Password Reset State ---
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+
   // --- Auth & Plan Listener ---
   useEffect(() => {
     // 1. Get Session
@@ -100,30 +106,19 @@ export default function App() {
       if (session) fetchUserPlan(session.user.id); 
     });
 
-    // 2. Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // 2. Listen for changes (Including Password Recovery)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      
+      // Check for Password Recovery Event
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowResetModal(true);
+      }
+
       if (session) fetchUserPlan(session.user.id); 
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  // --- Payment Success Listener ---
-  useEffect(() => {
-    // 1. Check for the "upgraded" flag in the URL
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('upgraded') === 'true') {
-        
-        // 2. Celebration Alert
-        alert("PAYMENT SUCCESSFUL! \n\nWelcome to the Pioneer Plan. (Please wait for admin to provision your account).");
-        
-        // 3. Clean the URL (Remove the ?upgraded=true so it doesn't trigger again on refresh)
-        window.history.replaceState({}, document.title, "/");
-        
-        // 4. (Optional) Force local unlock for this session
-        setUserPlan('pioneer'); 
-    }
   }, []);
 
   // --- Helper Function to get the plan ---
@@ -178,7 +173,7 @@ export default function App() {
   // API Key State
   const [customApiKey, setCustomApiKey] = useState("");
 
-  // --- NEW: Marketplace State ---
+  // --- Marketplace State ---
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [marketAgents, setMarketAgents] = useState([]);
   const [isLoadingMarket, setIsLoadingMarket] = useState(false);
@@ -240,6 +235,23 @@ export default function App() {
     return <Auth />;
   }
 
+  // --- Password Update Logic ---
+  const handlePasswordUpdate = async () => {
+    if (!newPassword) return;
+    setResetLoading(true);
+    
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    
+    if (error) {
+        alert("Error updating password: " + error.message);
+    } else {
+        alert("Password updated successfully!");
+        setShowResetModal(false);
+        setNewPassword("");
+    }
+    setResetLoading(false);
+  };
+
   // --- DATA PERSISTENCE (SAVE) ---
   const handleSaveBoard = async () => {
     setSaveStatus("Saving...");
@@ -281,9 +293,9 @@ export default function App() {
     }
   };
 
-  // --- NEW: Reset / New Meeting Logic ---
+  // --- Reset / New Meeting Logic ---
   const handleResetBoard = async () => {
-    // 1. Confirm with user (Destructive Action)
+    // 1. Confirm with user
     const confirm = window.confirm("Start a new meeting?\n\nThis will clear the chat history and minutes, but keep your Board Members and Whiteboard facts.");
     if (!confirm) return;
 
@@ -298,7 +310,7 @@ export default function App() {
       actionItems: ["Define project scope"]
     });
     
-    // 3. Reset Database (Crucial step!)
+    // 3. Reset Database
     if (session && boardId) {
         const { error } = await supabase
             .from('boardrooms')
@@ -318,11 +330,11 @@ export default function App() {
     setIsProcessing(false);
   };
 
-  // --- API CALLER ---
+  // --- API CALLER (OPTIMIZED FOR RATE LIMITS) ---
   const callGemini = async (prompt, systemInstruction = "You are a helpful AI.") => {
     let retries = 0;
     const maxRetries = 4; 
-    const baseDelay = 2000;
+    const baseDelay = 3000; // Increased base delay for stability
     const activeKey = customApiKey || systemApiKey;
 
     while (retries < maxRetries) {
@@ -371,12 +383,15 @@ export default function App() {
           return null;
         }
 
-        const delay = (Math.pow(2, retries) * baseDelay) + (Math.random() * 1000);
+        // --- RETRY STRATEGY ---
+        let delay = (Math.pow(2, retries) * baseDelay) + (Math.random() * 1000);
         
         if (isRateLimit) {
-          setRetryStatus(`High traffic. Cooling down for ${Math.ceil(delay/1000)}s...`);
+            // Add extra padding for Rate Limits to clear the penalty box
+            delay += 5000; 
+            setRetryStatus(`High traffic (Rate Limit). Cooling down for ${Math.ceil(delay/1000)}s...`);
         } else {
-          setRetryStatus(`Network glitch. Retrying in ${Math.ceil(delay/1000)}s...`);
+            setRetryStatus(`Network glitch. Retrying in ${Math.ceil(delay/1000)}s...`);
         }
 
         await sleep(delay);
@@ -388,13 +403,13 @@ export default function App() {
 
   // --- Logic Functions ---
 
-  // --- NEW: Manual Trigger ---
+  // --- Manual Trigger ---
   const handleForceTrigger = async (member) => {
     if (isProcessing) return;
     setIsProcessing(true);
     setRetryStatus(null);
 
-    // 1. Add a system note so the transcript makes sense
+    // 1. Add a system note
     const triggerMsg = { role: 'system', sender: 'Chair', text: `The Chair calls on ${member.role}.`, type: 'alert' };
     setMessages(prev => [...prev, triggerMsg]);
 
@@ -402,7 +417,6 @@ export default function App() {
       // 2. Director Briefing (Forced)
       setProcessingStage(`Briefing ${member.role}...`);
       
-      // We pass the member as the 'forcedSpeaker'
       const briefing = await runDirectorAgent(messages, triggerMsg, minutes, boardMembers, whiteboardFacts, member);
 
       // 3. The Agent Speaks
@@ -421,7 +435,7 @@ export default function App() {
 
       setMessages(prev => [...prev, agentMsg]);
 
-      // Update Vibes (Reusing existing logic)
+      // Update Vibes
       setProcessingStage("Analyzing impact...");
       await runAlignmentAgent(agentMsg, boardMembers);
 
@@ -436,17 +450,16 @@ export default function App() {
   const handleUserTurn = async () => {
     if (!userInput.trim()) return;
 
-    // --- NEW: Message Limit Check ---
+    // --- Message Limit Check ---
     if (userPlan === 'free' && messages.length >= 30) {
         setMessages(prev => [...prev, {
             role: 'system',
             text: "🔒 FREE PLAN LIMIT REACHED (30 Messages). Upgrade to Pioneer to continue.",
             type: 'error'
         }]);
-        setUserInput(""); // Clear the input so they don't keep clicking
-        return; // Stop here. Do not call Gemini.
+        setUserInput("");
+        return; 
     }
-    // --------------------------------
 
     const userMsg = { role: 'user', sender: 'User', text: userInput, type: 'chat' };
     setMessages(prev => [...prev, userMsg]);
@@ -461,10 +474,11 @@ export default function App() {
       
       await sleep(1500);
 
-      setProcessingStage("Analyzing board reaction...");
-      await runAlignmentAgent(userMsg, boardMembers);
+      // --- OPTIMIZATION: SKIPPING IMMEDIATE ALIGNMENT CHECK TO SAVE API CALLS ---
+      // setProcessingStage("Analyzing board reaction...");
+      // await runAlignmentAgent(userMsg, boardMembers);
 
-      // Director decides who speaks next (Standard Flow)
+      // Director decides who speaks next
       setProcessingStage("Director is choosing...");
       const briefing = await runDirectorAgent(messages, userMsg, updatedMinutes, boardMembers, whiteboardFacts, null);
 
@@ -650,12 +664,11 @@ export default function App() {
   const handleEditMember = (member) => setEditingMember({ ...member });
   
   const handleCreateMember = () => {
-    // --- NEW: Limit Check ---
+    // --- Limit Check ---
     if (userPlan === 'free' && boardMembers.length >= 3) {
         alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
         return;
     }
-    // ------------------------
 
     setEditingMember({
       id: Date.now().toString(), name: 'New Member', role: 'Advisor', avatar: 'bg-gray-600',
@@ -677,7 +690,7 @@ export default function App() {
     if (editingMember?.id === id) setEditingMember(null);
   };
 
-  // --- NEW: Publish to Marketplace ---
+  // --- Publish to Marketplace ---
   const handlePublishMember = async () => {
     if (!editingMember || !session) return;
     
@@ -708,7 +721,7 @@ export default function App() {
     setProcessingStage("");
   };
 
-  // --- NEW: Marketplace Logic ---
+  // --- Marketplace Logic ---
   const loadMarketplace = async () => {
     setIsLoadingMarket(true);
     setShowMarketplace(true); // Switch view to market
@@ -725,14 +738,13 @@ export default function App() {
     setIsLoadingMarket(false);
   };
 
-  // --- UPDATE: Async Download & Count ---
+  // --- Async Download & Count ---
   const handleDownloadAgent = async (agent) => {
-    // --- NEW: Limit Check ---
+    // --- Limit Check ---
     if (userPlan === 'free' && boardMembers.length >= 3) {
         alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
         return;
     }
-    // ------------------------
 
     // 1. Check if we already have this role
     const exists = boardMembers.find(m => m.role === agent.role);
@@ -741,7 +753,7 @@ export default function App() {
         return;
     }
 
-    // 2. Add to local board (with a new ID so it's unique)
+    // 2. Add to local board
     const newMember = {
       ...agent,
       id: Date.now().toString(), // Give it a fresh local ID
@@ -752,7 +764,7 @@ export default function App() {
     alert(`Deployed ${agent.role} to your boardroom.`);
     setShowMemberConfig(false); // Close modal
 
-    // 3. --- NEW: Increment Counter in Background ---
+    // 3. Increment Counter in Background
     const { error } = await supabase.rpc('increment_downloads', { row_id: agent.id });
     if (error) console.error("Failed to count download:", error);
   };
@@ -838,7 +850,7 @@ export default function App() {
           </div>
           {/* Close for mobile, Save for desktop */}
           <div className="flex items-center gap-2">
-             {/* --- NEW: Reset Button --- */}
+             {/* --- Reset Button --- */}
              <button 
                 onClick={handleResetBoard} 
                 disabled={isProcessing} 
@@ -847,7 +859,6 @@ export default function App() {
              >
                <RotateCcw size={14} /> <span className="hidden sm:inline">Reset</span>
              </button>
-             {/* ------------------------- */}
             <button onClick={handleSaveBoard} className="text-gray-400 hover:text-green-400 transition-colors" title="Save Game">
                 {saveStatus === "Saving..." ? <RotateCcw size={18} className="animate-spin text-yellow-400"/> : <CloudUpload size={18} />}
             </button>
@@ -930,7 +941,7 @@ export default function App() {
                   </div>
                 </div>
                 
-                {/* NEW: Force Speak Button (Visible on Hover) */}
+                {/* Force Speak Button (Visible on Hover) */}
                 <button 
                     onClick={() => handleForceTrigger(m)}
                     disabled={isProcessing}
@@ -946,7 +957,7 @@ export default function App() {
         
         {/* User Profile & Sign Out */}
         <div className="p-4 border-t border-gray-800 bg-gray-900 mt-auto">
-            {/* --- NEW: Plan Status --- */}
+            {/* --- Plan Status --- */}
             <div className="mb-4">
                 {userPlan === 'free' ? (
                     <button 
@@ -961,7 +972,6 @@ export default function App() {
                     </div>
                 )}
             </div>
-            {/* ------------------------- */}
             
             <div className="flex items-center justify-between">
                 <div className="text-xs text-gray-400 truncate max-w-[150px]">
@@ -1036,6 +1046,44 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* --- Password Reset Modal --- */}
+        {showResetModal && (
+          <div className="absolute inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-gray-900 border border-gray-700 w-full max-w-md p-6 rounded-lg shadow-2xl">
+              <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                 <Key size={20} className="text-indigo-400"/> Update Password
+              </h2>
+              <p className="text-sm text-gray-400 mb-6">Enter your new password below.</p>
+              
+              <div className="space-y-4">
+                  <input 
+                    type="password" 
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded p-3 text-sm text-white focus:border-indigo-500 outline-none"
+                    placeholder="New Password"
+                  />
+                  
+                  <div className="flex gap-3">
+                    <button 
+                        onClick={() => setShowResetModal(false)}
+                        className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm font-bold"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handlePasswordUpdate}
+                        disabled={resetLoading || !newPassword}
+                        className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                        {resetLoading ? <Loader2 size={16} className="animate-spin"/> : "Save Password"}
+                    </button>
+                  </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Member Config Modal */}
         {showMemberConfig && (
@@ -1129,11 +1177,11 @@ export default function App() {
                             <textarea className="w-full h-40 bg-gray-800 border border-gray-700 rounded p-3 text-sm text-gray-300 focus:border-indigo-500 outline-none leading-relaxed" value={editingMember.description} onChange={(e) => setEditingMember({...editingMember, description: e.target.value})} />
                           </div>
                           
-                          {/* --- UPDATE: Member Config Footer --- */}
+                          {/* Member Config Footer */}
                           <div className="pt-4 flex items-center justify-between border-t border-gray-800 mt-8">
                             <button onClick={() => handleDeleteMember(editingMember.id)} className="text-red-400 hover:text-red-300 text-xs font-bold flex items-center gap-2"><Trash2 size={14} /> Delete</button>
                             
-                            {/* NEW: Publish Button */}
+                            {/* Publish Button */}
                             <button onClick={handlePublishMember} className="text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-2">
                                 <Globe size={14} /> Publish to Market
                             </button>
