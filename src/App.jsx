@@ -43,7 +43,7 @@ import {
 const systemApiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 // --- STRIPE CONFIGURATION ---
-const STRIPE_BASE_URL = "https://buy.stripe.com/dRm4gydMKaEidUzc790Jq01";
+const STRIPE_BASE_URL = "https://buy.stripe.com/cNi4gybECaEi17N0or0Jq00";
 const WEBHOOK_SERVER_URL = "https://api.kreygo.com";
 
 // --- Default Personas ---
@@ -256,6 +256,8 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [alignmentCollapsed, setAlignmentCollapsed] = useState(true);
   const [whiteboardCollapsed, setWhiteboardCollapsed] = useState(true);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportData, setReportData] = useState(null);
   const [minutesCollapsed, setMinutesCollapsed] = useState(true);
   const messagesEndRef = useRef(null);
   const whiteboardSnapshot = useRef("");
@@ -970,6 +972,7 @@ export default function App() {
   const triggerVote = async (proposalText = null) => {
     if (isProcessing) return;
     setIsProcessing(true);
+    const minutesSnapshot = minutes;
 
     try {
       // Step 1: Generate proposal if not provided
@@ -981,14 +984,14 @@ export default function App() {
 
       // Step 2: Run the vote with the proposal
       setProcessingStage("The board is voting...");
-      const results = await runBatchVoteAgent(boardMembers, minutes, whiteboardFacts, proposal);
+      const results = await runBatchVoteAgent(boardMembers, minutesSnapshot, whiteboardFacts, proposal);
 
       const yesVotes = results.filter(r => r.vote === 'YES').length;
       const noVotes = results.filter(r => r.vote === 'NO').length;
       const passed = yesVotes > noVotes;
 
       setProcessingStage("Drafting resolution...");
-      const resolution = await runResolutionAgent(results, minutes, passed);
+      const resolution = await runResolutionAgent(results, minutesSnapshot, passed);
 
       const votesSummary = results.map(r => `${r.member}: ${r.vote} ("${r.reason}")`).join(', ');
       setMessages(prev => [...prev, {
@@ -1000,6 +1003,10 @@ export default function App() {
         resolution: resolution,
         proposal: proposal
       }]);
+
+      // Show meeting report modal
+      setReportData({ boardName, boardMembers, minutes: minutesSnapshot, proposal, results, resolution, passed, yesVotes, noVotes });
+      setShowReportModal(true);
 
       // Turn off auto-mode if it was on
       setAutoMode(false);
@@ -1881,8 +1888,7 @@ Shape B (ready to suggest):
             <button onClick={() => setWhiteboardCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
               <h2 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><FileText size={12} /> The Whiteboard</h2>
               <div className="flex items-center gap-2">
-                {!whiteboardCollapsed && (
-                  showSettings ? (
+                {showSettings ? (
                     <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={async () => { await handleSaveBoard(); setShowSettings(false); }}
@@ -1901,14 +1907,13 @@ Shape B (ready to suggest):
                     </div>
                   ) : (
                     <button
-                      onClick={e => { e.stopPropagation(); whiteboardSnapshot.current = whiteboardFacts; setShowSettings(true); }}
+                      onClick={e => { e.stopPropagation(); whiteboardSnapshot.current = whiteboardFacts; setShowSettings(true); setWhiteboardCollapsed(false); }}
                       className="text-gray-500 hover:text-white transition-colors"
                       title="Edit whiteboard"
                     >
                       <Edit size={12} />
                     </button>
-                  )
-                )}
+                  )}
                 <ChevronRight size={14} className={`text-gray-500 transition-transform duration-200 ${whiteboardCollapsed ? '' : 'rotate-90'}`} />
               </div>
             </button>
@@ -2048,7 +2053,7 @@ Shape B (ready to suggest):
           <div className="flex items-center gap-2">
               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-gray-400 mr-2"><Menu size={20} /></button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 overflow-x-auto min-w-0 pb-0.5">
              <button onClick={handleContinue} disabled={isProcessing || messages.length === 0 || !!speakerPickState || autoMode} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded text-xs transition-colors disabled:opacity-50" title="Pick who speaks next without sending a message">
                <Users size={14} /> <span className="hidden sm:inline">Next Speaker</span>
              </button>
@@ -2540,6 +2545,137 @@ Shape B (ready to suggest):
           </div>
         )}
       </div>
+
+      {/* --- Meeting Report Modal --- */}
+      {showReportModal && reportData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+              <div>
+                <h2 className="text-white font-bold text-base">{reportData.boardName} — Meeting Report</h2>
+                <p className="text-gray-500 text-xs mt-0.5">{new Date().toLocaleString()}</p>
+              </div>
+              <button onClick={() => setShowReportModal(false)} className="text-gray-500 hover:text-white transition-colors"><X size={18} /></button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5 scrollbar-thin scrollbar-thumb-gray-800">
+
+              {/* Board Members */}
+              <div>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-wider">Board Members</h3>
+                <div className="flex flex-wrap gap-2">
+                  {reportData.boardMembers.map(m => (
+                    <span key={m.id} className="text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
+                      <span className="text-white font-medium">{m.role}</span> <span className="text-gray-500">({m.name})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Meeting Minutes */}
+              <div>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-wider">Meeting Minutes</h3>
+                <div className="space-y-2 bg-gray-800/50 border border-gray-800 rounded-lg p-3">
+                  {[
+                    { label: 'Momentum', value: reportData.minutes.momentum, color: 'text-green-400' },
+                    { label: 'Consensus', value: reportData.minutes.consensus, color: 'text-blue-400' },
+                    { label: 'Friction Points', value: reportData.minutes.friction, color: 'text-red-400' },
+                  ].map(item => (
+                    <div key={item.label}>
+                      <span className={`text-[10px] font-bold uppercase ${item.color}`}>{item.label}: </span>
+                      <span className="text-xs text-gray-300">{item.value}</span>
+                    </div>
+                  ))}
+                  {reportData.minutes.actionItems?.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-yellow-400">Action Items:</span>
+                      <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                        {reportData.minutes.actionItems.map((ai, i) => (
+                          <li key={i} className="text-xs text-gray-300">{ai}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Vote Record */}
+              <div>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-wider">Vote Record</h3>
+                <div className="bg-gray-800/50 border border-gray-800 rounded-lg p-3 space-y-3">
+                  <div className="bg-indigo-900/30 border border-indigo-800 rounded p-2">
+                    <div className="text-[10px] font-bold text-indigo-400 uppercase mb-1">Motion on the Table</div>
+                    <div className="text-sm text-white italic">"{reportData.proposal}"</div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {reportData.results.map((vote, i) => (
+                      <div key={i} className="flex items-center gap-3 text-xs">
+                        <span className="text-gray-400 w-28 flex-shrink-0">{vote.member}</span>
+                        <span className={`px-2 py-0.5 rounded font-bold w-10 text-center flex-shrink-0 ${vote.vote === 'YES' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>{vote.vote}</span>
+                        <span className="text-gray-500 italic truncate">"{vote.reason}"</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`text-sm font-bold text-center py-1 rounded ${reportData.passed ? 'bg-green-900/40 text-green-300 border border-green-800' : 'bg-red-900/40 text-red-300 border border-red-800'}`}>
+                    {reportData.passed ? 'MOTION PASSED' : 'MOTION REJECTED'} — {reportData.yesVotes} YES / {reportData.noVotes} NO
+                  </div>
+                </div>
+              </div>
+
+              {/* Official Resolution */}
+              {reportData.resolution && (
+                <div>
+                  <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-wider">Official Resolution</h3>
+                  <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 italic">{reportData.resolution}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-700">
+              <button
+                onClick={() => {
+                  const actionLines = reportData.minutes.actionItems?.length
+                    ? reportData.minutes.actionItems.map(ai => `  - ${ai}`).join('\n')
+                    : '  None';
+                  const memberLines = reportData.boardMembers.map(m => `  - ${m.role} (${m.name})`).join('\n');
+                  const voteLines = reportData.results.map(r => `  ${r.member}: ${r.vote} — "${r.reason}"`).join('\n');
+                  const text = [
+                    'BOARDROOM MEETING REPORT',
+                    `Board: ${reportData.boardName}`,
+                    `Date: ${new Date().toLocaleString()}`,
+                    '',
+                    'BOARD MEMBERS',
+                    memberLines,
+                    '',
+                    'MEETING MINUTES',
+                    `  Momentum: ${reportData.minutes.momentum}`,
+                    `  Consensus: ${reportData.minutes.consensus}`,
+                    `  Friction Points: ${reportData.minutes.friction}`,
+                    '  Action Items:',
+                    actionLines,
+                    '',
+                    'VOTE RECORD',
+                    `  Motion: "${reportData.proposal}"`,
+                    voteLines,
+                    `  Result: ${reportData.passed ? 'PASSED' : 'REJECTED'} (${reportData.yesVotes}-${reportData.noVotes})`,
+                    '',
+                    'OFFICIAL RESOLUTION',
+                    `  ${reportData.resolution}`,
+                  ].join('\n');
+                  navigator.clipboard.writeText(text);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-xs font-bold transition-colors"
+              >
+                <ClipboardList size={14} /> Copy to Clipboard
+              </button>
+              <button onClick={() => setShowReportModal(false)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-bold transition-colors">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
