@@ -1,0 +1,245 @@
+import React from 'react';
+import { Sparkles, X, BrainCircuit, Loader2, ChevronRight } from 'lucide-react';
+import { BOARD_TEMPLATES, formatCST } from '../../lib/constants.js';
+import AIBuilderMessage from '../AIBuilderMessage.jsx';
+
+export default function TemplateModal({
+  // Template / board setup state
+  selectedTemplateId, setSelectedTemplateId,
+  pendingBoardName, setPendingBoardName,
+  pendingMembers, setPendingMembers,
+  pendingWhiteboard, setPendingWhiteboard,
+  setupPurpose, setSetupPurpose,
+  setupBudget, setSetupBudget,
+  setupTimeline, setSetupTimeline,
+  // AI Builder state
+  aiBuilderMessages, setAIBuilderMessages,
+  aiBuilderInput, setAIBuilderInput,
+  isAIBuilderLoading, setIsAIBuilderLoading,
+  addedSuggestionIds,
+  aiBuilderEndRef,
+  // Handlers
+  runAIBuilderAgent,
+  handleAIBuilderSend,
+  addSuggestedMember,
+  handleCreateFromTemplate,
+  onClose,
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 flex-shrink-0">
+          <h2 className="text-white font-bold text-base flex items-center gap-2">
+            <Sparkles size={16} className="text-indigo-400" /> New Boardroom
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Two-column body */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
+
+          {/* LEFT: template + name + members */}
+          <div className="w-72 flex-shrink-0 border-r border-gray-700 flex flex-col overflow-y-auto p-4 space-y-4">
+
+            {/* Template grid - compact 2-col */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-2">Starting Template</label>
+              <div className="grid grid-cols-2 gap-2">
+                {BOARD_TEMPLATES.map(t => {
+                  const timeStr = formatCST();
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setSelectedTemplateId(t.id);
+                        setPendingBoardName(t.id === 'blank' ? 'New Boardroom' : t.name);
+                        setPendingMembers([...t.members]);
+                        setPendingWhiteboard(t.whiteboard(timeStr));
+                      }}
+                      className={`text-left p-2.5 rounded-lg border transition-all ${
+                        selectedTemplateId === t.id
+                          ? 'bg-indigo-900/40 border-indigo-500 ring-1 ring-indigo-500'
+                          : 'bg-gray-800 border-gray-700 hover:border-gray-500'
+                      }`}
+                    >
+                      <div className="text-lg mb-1">{t.icon}</div>
+                      <div className="text-xs font-bold text-white leading-tight">{t.name}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Board Name */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1.5">Board Name</label>
+              <input
+                type="text"
+                value={pendingBoardName}
+                onChange={(e) => setPendingBoardName(e.target.value)}
+                placeholder="Name this boardroom..."
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
+              />
+            </div>
+
+            {/* Meeting Context */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-gray-400 uppercase">Meeting Purpose</label>
+                <button
+                  onClick={async () => {
+                    if (!setupPurpose.trim() || isAIBuilderLoading) return;
+                    const parts = [setupPurpose.trim(), setupBudget.trim() && `Budget: ${setupBudget.trim()}`, setupTimeline.trim() && `Timeline: ${setupTimeline.trim()}`].filter(Boolean);
+                    const userText = parts.join('. ');
+                    const userMsg = { role: 'user', type: 'user-chat', text: userText };
+                    const updatedHistory = [...aiBuilderMessages, userMsg];
+                    setAIBuilderMessages(updatedHistory);
+                    setIsAIBuilderLoading(true);
+                    const wb = [pendingWhiteboard, `Meeting Purpose: ${setupPurpose.trim()}`, setupBudget.trim() && `Budget: ${setupBudget.trim()}`, setupTimeline.trim() && `Timeline: ${setupTimeline.trim()}`].filter(Boolean).join('\n');
+                    const response = await runAIBuilderAgent(updatedHistory, { members: pendingMembers, whiteboard: wb });
+                    setIsAIBuilderLoading(false);
+                    if (!response) {
+                      setAIBuilderMessages(prev => [...prev, { role: 'assistant', type: 'ai-chat', text: "Something went wrong. Please try again." }]);
+                    } else if (response.type === 'message') {
+                      setAIBuilderMessages(prev => [...prev, { role: 'assistant', type: 'ai-chat', text: response.text }]);
+                    } else if (response.type === 'suggestions') {
+                      const sid = Date.now().toString();
+                      setAIBuilderMessages(prev => [...prev, { role: 'assistant', type: 'suggestions', text: response.intro || "Here are my recommendations:", members: response.members.map((m, i) => ({ ...m, id: `sugg_${sid}_${i}` })) }]);
+                    }
+                  }}
+                  disabled={!setupPurpose.trim() || isAIBuilderLoading}
+                  className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold"
+                  title="Send this context to the AI builder"
+                >
+                  <Sparkles size={10} /> Ask AI
+                </button>
+              </div>
+              <textarea
+                value={setupPurpose}
+                onChange={e => setSetupPurpose(e.target.value)}
+                rows={3}
+                placeholder="e.g. We need to decide whether to launch in Q2 or delay to Q4..."
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-white focus:border-indigo-500 outline-none resize-none transition-colors placeholder-gray-600"
+              />
+              <div className="flex gap-2">
+                <input
+                  value={setupBudget}
+                  onChange={e => setSetupBudget(e.target.value)}
+                  placeholder="Budget (optional)"
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none transition-colors placeholder-gray-600"
+                />
+                <input
+                  value={setupTimeline}
+                  onChange={e => setSetupTimeline(e.target.value)}
+                  placeholder="Timeline (optional)"
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none transition-colors placeholder-gray-600"
+                />
+              </div>
+            </div>
+
+            {/* Current Members list */}
+            <div className="flex-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-2">
+                Board Members <span className="text-gray-600 font-normal normal-case">({pendingMembers.length})</span>
+              </label>
+              <div className="space-y-1.5">
+                {pendingMembers.map(m => (
+                  <div key={m.id} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 group">
+                    <div className={`w-6 h-6 rounded-full ${m.avatar} flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0`}>
+                      {m.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-white truncate">{m.role}</div>
+                      <div className="text-[10px] text-gray-500 truncate">{m.name}</div>
+                    </div>
+                    <button
+                      onClick={() => setPendingMembers(prev => prev.filter(p => p.id !== m.id))}
+                      className="text-gray-700 hover:text-red-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {pendingMembers.length === 0 && (
+                  <p className="text-xs text-gray-600 italic px-1">No members yet. Use the AI to generate some →</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: AI Builder */}
+          <div className="flex-1 flex flex-col overflow-hidden bg-gray-950/40">
+            <div className="px-4 pt-3 pb-2 border-b border-gray-700/60 flex-shrink-0 flex items-center gap-2">
+              <BrainCircuit size={13} className="text-purple-400 flex-shrink-0" />
+              <p className="text-xs text-gray-400">Use AI to suggest members for your scenario, or refine the template roster — then click <span className="text-white font-medium">Add to Board</span> on any card.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {aiBuilderMessages.length === 0 && !isAIBuilderLoading && (
+                <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-50 py-12">
+                  <Sparkles size={28} className="mb-2" />
+                  <p className="text-xs text-center">Analyzing your scenario...</p>
+                </div>
+              )}
+              {aiBuilderMessages.map((msg, idx) => (
+                <AIBuilderMessage
+                  key={idx}
+                  msg={msg}
+                  idx={idx}
+                  addedSuggestionIds={addedSuggestionIds}
+                  conflictList={pendingMembers}
+                  onAddMember={addSuggestedMember}
+                />
+              ))}
+              {isAIBuilderLoading && (
+                <div className="flex items-center gap-2 text-xs text-purple-400 animate-pulse pl-9 mt-2">
+                  <Loader2 size={14} className="animate-spin" /> Thinking about your board...
+                </div>
+              )}
+              <div ref={aiBuilderEndRef} />
+            </div>
+            <div className="p-3 border-t border-gray-700/60 flex-shrink-0 bg-gray-900/60">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiBuilderInput}
+                  onChange={(e) => setAIBuilderInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAIBuilderSend()}
+                  placeholder="Describe your project, request roles, or refine suggestions..."
+                  disabled={isAIBuilderLoading}
+                  className="flex-1 bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 rounded-lg focus:outline-none focus:border-purple-500 text-sm disabled:opacity-50"
+                />
+                <button
+                  onClick={handleAIBuilderSend}
+                  disabled={isAIBuilderLoading || !aiBuilderInput.trim()}
+                  className="bg-purple-700 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {isAIBuilderLoading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white text-sm font-bold transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreateFromTemplate}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded text-sm font-bold transition-colors"
+          >
+            <Sparkles size={14} /> Start Meeting ({pendingMembers.length} members)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

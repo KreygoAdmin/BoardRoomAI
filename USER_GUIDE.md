@@ -1,6 +1,6 @@
 # Boardroom Simulator — User Guide
 
-> **Version:** 1.0
+> **Version:** 1.1
 > **Last Updated:** February 2026
 
 ---
@@ -19,15 +19,16 @@
 10. [Board Members Panel](#10-board-members-panel)
 11. [The Whiteboard (Meeting Context)](#11-the-whiteboard-meeting-context)
 12. [Customizing Board Members](#12-customizing-board-members)
-13. [My Library (Personal Agent Storage)](#13-my-library-personal-agent-storage)
-14. [The AI Builder](#14-the-ai-builder)
-15. [The Agent Marketplace](#15-the-agent-marketplace)
-16. [Managing Multiple Boards](#16-managing-multiple-boards)
-17. [Token Usage Tracking](#17-token-usage-tracking)
-18. [Plans & Limits](#18-plans--limits)
-19. [Tips & Best Practices](#19-tips--best-practices)
-20. [Troubleshooting](#20-troubleshooting)
-21. [Glossary](#21-glossary)
+13. [Per-Member AI Models](#13-per-member-ai-models)
+14. [My Library (Personal Agent Storage)](#14-my-library-personal-agent-storage)
+15. [The AI Builder](#15-the-ai-builder)
+16. [The Agent Marketplace](#16-the-agent-marketplace)
+17. [Managing Multiple Boards](#17-managing-multiple-boards)
+18. [Token Usage Tracking](#18-token-usage-tracking)
+19. [Plans & Limits](#19-plans--limits)
+20. [Tips & Best Practices](#20-tips--best-practices)
+21. [Troubleshooting](#21-troubleshooting)
+22. [Glossary](#22-glossary)
 
 ---
 
@@ -43,7 +44,7 @@ Boardroom Simulator is an AI-powered application that simulates a corporate boar
 - Explore the trade-offs of a decision through structured debate
 - Generate meeting minutes, action items, and formal resolutions
 
-Each board member is powered by Google Gemini AI and stays in character throughout the meeting. An AI Orchestrator manages the flow: picking speakers, tracking consensus, triggering research, and calling votes when the time is right.
+Each board member is powered by an AI model of your choosing (Google Gemini by default, with support for Claude, GPT-4o, Llama, Mistral, and more via OpenRouter). An AI Orchestrator manages the flow: picking speakers, tracking consensus, triggering research, and calling votes when the time is right.
 
 ---
 
@@ -86,12 +87,11 @@ From top to bottom:
 
 | Section | Purpose |
 |---------|---------|
-| **Header** | App logo. Save, board switch, and reset buttons. |
-| **Board Name** | Editable name for the current boardroom. Click to rename. |
-| **Board Switcher** | Dropdown list of all your saved boards. Create new boards here (Pioneer plan). |
+| **Header** | App logo. Save and reset buttons. |
+| **Board Name** | Editable name for the current boardroom. The **board switcher** button (list icon) sits inline to the right — click it to switch boards or create a new one. |
 | **The Whiteboard** | Editable session context — project details, constraints, goals. All board members can reference this. |
 | **Secretary's Minutes** | Auto-tracked meeting metrics: momentum, consensus, friction points, action items. |
-| **Board Members** | Live view of each member's agreement score (0–100%). Access the member editor from here. |
+| **Board Members** | Live view of each member's agreement score and AI model badge. Access the member editor from here. |
 | **Profile Footer** | Your plan status, email, sign-out button, and upgrade option. |
 
 Each section is collapsible — click the header to expand or collapse it.
@@ -109,7 +109,7 @@ This is where the meeting happens.
 | **Auto: On/Off** | Toggle continuous conversation mode. Turning off also clears all processing state. |
 | **Research: On/Off** | Toggle automatic fact-checking lookups |
 | **Look It Up** | Manually trigger a research lookup on the current topic |
-| **Call Vote** | Formally call the board to vote on a proposal |
+| **Call Vote** | Opens the Vote Setup modal to configure and run a formal board vote |
 | **Message counter** | Shows messages used this month (e.g. `5 / 30`). Pioneer members see `Unlimited`. |
 | **Token counter** | Shows your lifetime AI token usage (⚡ icon). Updates in real time. |
 
@@ -232,17 +232,42 @@ Every 3 messages, the **Alignment Agent** recalculates each member's agreement s
 
 Votes can be triggered in two ways:
 
-1. **You click "Call Vote"** — manually trigger a vote at any time.
-2. **The Orchestrator calls one** — automatically detects a deadlock (members going in circles) or a clear decision point (concrete proposal on the table).
+1. **You click "Call Vote"** — manually opens the Vote Setup modal at any time.
+2. **The Orchestrator calls one** — automatically detects a deadlock (members going in circles) or a clear decision point (concrete proposal on the table). Instead of firing immediately, it opens the Vote Setup modal so you can review first.
 
-### 6.2 The Voting Process
+### 6.2 The Vote Setup Modal
 
-1. **Proposal** — If there isn't a clear proposal, the AI generates a formal motion (1–2 sentences).
-2. **Voting** — Each board member votes **YES** or **NO** with a 5-word reason.
-3. **Tally** — Results display: *"VOTE PASSED (3-2)"* or *"VOTE REJECTED (2-3)"*.
-4. **Resolution** — A Secretary writes a formal 2-sentence resolution summarizing the outcome and next steps.
+Before any vote runs, the **Vote Setup modal** appears. This gives you full control over the vote before it happens:
 
-### 6.3 Example Vote Result
+**Motion / Question**
+The AI pre-fills a proposal based on the discussion. You can edit it freely — change the wording, sharpen the scope, or replace it entirely.
+
+**Vote Type**
+Choose between two modes:
+
+- **Binary (Yes / No)** — Each member votes YES or NO. The motion passes if YES votes outnumber NO votes.
+- **Multi-Option** — Each member votes for one of 2–4 named options. The option with the most votes wins.
+
+**Options** *(Multi-Option mode only)*
+Add 2–4 labeled options (A, B, C, D). Each option needs a description before the vote can run. Click **+ Add Option** to add more, or **×** to remove one.
+
+**Clarification Note** *(optional)*
+Add a note for the board before they vote — e.g., *"Focus on short-term cost implications"* or *"Assume a 6-month runway."* This is injected directly into the vote prompt so members factor it into their reasoning.
+
+**Buttons**
+- **Cancel** — Dismisses the modal. No vote is run.
+- **Run Vote** — Executes the vote with your configured settings.
+
+### 6.3 The Voting Process
+
+Once you click **Run Vote**:
+
+1. Each board member casts their vote with a 5-word reason based on their personality and the context.
+2. Results are tallied and displayed in the chat.
+3. A Secretary writes a formal 2-sentence resolution summarizing the outcome.
+4. The Meeting Report modal opens with the full breakdown.
+
+### 6.4 Binary Vote Results
 
 ```
 PROPOSAL: Adopt Vendor X for AI infrastructure with a $100K
@@ -261,7 +286,27 @@ infrastructure. Legal will review contract terms within two weeks
 before final signature.
 ```
 
-### 6.4 After a Vote
+### 6.5 Multi-Option Vote Results
+
+When running a multi-option vote, results show a **tally bar** per option with the winner highlighted in green:
+
+```
+MOTION: Which go-to-market approach should we pursue?
+
+A. Direct sales team (enterprise)    ████████░░  3 votes  ✓ WINNER
+B. Self-serve product-led growth     ████░░░░░░  2 votes
+C. Channel partner program           ░░░░░░░░░░  0 votes
+
+Marcus:  A — "Enterprise contracts ensure revenue stability"
+Sarah:   B — "PLG scales without headcount investment"
+Priya:   A — "Partner agreements add compliance risk"
+David:   B — "PLG generates organic growth momentum"
+Alex:    A — "Enterprise gives predictable pipeline"
+
+RESULT: Option A Selected — "Direct sales team (enterprise)"
+```
+
+### 6.6 After a Vote
 
 - Auto-Mode stops automatically when a vote is called.
 - The resolution is added to the meeting minutes as an action item.
@@ -286,7 +331,7 @@ Auto-Mode lets the board debate without your input. The Orchestrator picks speak
 - **Max 20 turns** — Auto-Mode stops after 20 exchanges to prevent runaway conversations.
 - **No repeat speakers** — The same member never speaks twice in a row.
 - **2.5-second delay** between messages for readability.
-- **Stops automatically** if the Orchestrator calls a vote.
+- **Stops automatically** if the Orchestrator decides a vote is needed (opens Vote Setup modal).
 
 ### 7.4 Stopping Auto-Mode
 
@@ -364,7 +409,7 @@ Minutes update after every exchange via the Orchestrator and persist with your s
 
 ## 10. Board Members Panel
 
-The **Board Members** panel in the sidebar shows each member's current **agreement score** as a color-coded progress bar (0–100%).
+The **Board Members** panel in the sidebar shows each member's current **agreement score** as a color-coded progress bar (0–100%), plus a small **model badge** showing which AI model powers that member.
 
 ### How Alignment Changes
 
@@ -384,6 +429,8 @@ Every 3 messages, the **Alignment Agent** evaluates the impact of recent argumen
 | 75–100% | Strongly supportive — likely to vote YES |
 
 Watch alignment shift in real time as you make your case. If the CFO's agreement drops to 20%, you know your financial argument isn't landing.
+
+The model badge under each member's bar shows their assigned AI (e.g., "Gemini 2.0 Flash" in blue, or "Claude 3.5 Sonnet" in purple for OpenRouter models). See [Section 13](#13-per-member-ai-models) to change a member's model.
 
 ---
 
@@ -436,14 +483,15 @@ Click any member's name in the left panel, then modify:
 | **Name** | The member's first name |
 | **Role** | Job title (e.g., "Chief Revenue Officer") |
 | **Avatar Color** | Choose from 7 colors: blue, purple, yellow, pink, green, red, gray |
-| **System Instructions** | The full personality description — 2–3 paragraphs defining how they think, speak, and what they care about |
+| **AI Model** | The AI model this member uses when speaking — see [Section 13](#13-per-member-ai-models) |
+| **System Instructions** | The full personality description — defines how they think, speak, and what they care about |
 
 Click **Save** to apply changes.
 
 ### 12.3 Add a New Member
 
 1. Click **"Add New Member"** at the bottom of the member list.
-2. Fill in name, role, avatar color, and personality description.
+2. Fill in name, role, avatar color, AI model, and personality description.
 3. Set initial **Agreement** and **Aggression** stats.
 4. Click **Save**.
 
@@ -464,16 +512,57 @@ Use the **Reset** button in the sidebar header to restore the original five boar
 
 ---
 
-## 13. My Library (Personal Agent Storage)
+## 13. Per-Member AI Models
+
+Each board member has their own assigned AI model. When they speak during a meeting, their responses are generated by that specific model. This lets you mix models across the board — a Claude member debates differently from a Gemini member — and lets you swap out any member who isn't performing well.
+
+### 13.1 Available Models
+
+**Gemini (Google)**
+
+| Model | Notes |
+|-------|-------|
+| Gemini 2.0 Flash | Default — fast and capable |
+| Gemini 1.5 Pro | More thorough reasoning |
+
+**OpenRouter models** *(require `VITE_OPENROUTER_API_KEY` to be set)*
+
+| Model | Notes |
+|-------|-------|
+| Claude 3.5 Sonnet | Strong nuanced reasoning, excellent for legal/strategic roles |
+| Claude 3 Haiku | Fast and concise |
+| GPT-4o | Versatile, strong at structured arguments |
+| GPT-4o Mini | Faster, lower cost |
+| Llama 3.3 70B | Open-source, diverse perspective |
+| Mistral Large | European perspective, good at logic-heavy roles |
+
+### 13.2 Changing a Member's Model
+
+1. Open the Member Editor (Board Members → Edit icon).
+2. Click the member you want to change.
+3. Use the **AI Model** dropdown to select a new model.
+4. Click **Save**.
+
+The model badge in the sidebar updates immediately. Blue badges = Gemini; purple badges = OpenRouter.
+
+### 13.3 Why Use Different Models?
+
+- **Diversity of voice** — Different models have genuinely different reasoning styles, producing more varied and interesting debate.
+- **Fix a bad actor** — If one member keeps giving flat or repetitive responses, switch them to a different model.
+- **Role matching** — Assign a model with strong analytical reasoning (e.g., Claude 3.5 Sonnet) to your Legal or CFO role, and a faster model to less critical seats.
+
+---
+
+## 14. My Library (Personal Agent Storage)
 
 My Library is your personal collection of saved agents. Unlike the Marketplace (which is public), your library is private and only visible to you. Use it to build a reusable roster of agents you can deploy to any board.
 
-### 13.1 How to Access
+### 14.1 How to Access
 
 1. Open the Member Editor (Board Members → Edit).
 2. Switch to the **My Library** tab (amber).
 
-### 13.2 Save an Agent to Your Library
+### 14.2 Save an Agent to Your Library
 
 1. In the **Your Board** tab, select a member to edit.
 2. Click **"Save to Library"** in the editor footer.
@@ -482,48 +571,53 @@ My Library is your personal collection of saved agents. Unlike the Marketplace (
 > **Free plan:** Up to 5 saved agents.
 > **Pioneer plan:** Unlimited.
 
-### 13.3 Browse Your Library
+### 14.3 Browse Your Library
 
 Your saved agents appear as cards showing their role, name, avatar, and a description preview. Click any card to select it for editing.
 
-### 13.4 Load a Library Agent onto Your Board
+### 14.4 Load a Library Agent onto Your Board
 
 Click the **+** button on any card to add that agent to your current board. The same free-plan limits and role-conflict checks apply as when downloading from the Marketplace.
 
-### 13.5 Edit a Library Agent
+### 14.5 Edit a Library Agent
 
-Click a card to open the edit form on the right. You can modify the name, role, avatar color, and system instructions. Click **"Save Changes"** to persist your edits.
+Click a card to open the edit form on the right. You can modify the name, role, avatar color, AI model, and system instructions. Click **"Save Changes"** to persist your edits.
 
-### 13.6 Remove a Library Agent
+### 14.6 Remove a Library Agent
 
 Click the trash icon on a card, or click **"Delete"** in the edit form. You'll be asked to confirm before removal.
 
 ---
 
-## 14. The AI Builder
+## 15. The AI Builder
 
 The AI Builder is an intelligent assistant that suggests new board members tailored to your project.
 
-### 14.1 How to Access
+### 15.1 How to Access
 
 1. Open the Member Editor (Board Members → Edit).
 2. Switch to the **AI Builder** tab.
 
-### 14.2 How It Works
+### 15.2 How It Works
 
 1. The AI Builder reads your **Whiteboard** and **conversation history**.
 2. It may ask a clarifying question: *"What's the biggest challenge you're facing?"*
 3. Answer the question and it generates **4–6 suggested members**, each with:
    - Name and role
-   - Full personality description
+   - **Rich 4–6 sentence personality description** covering:
+     - Career background and domain expertise
+     - Core motivation and what they're protecting
+     - Communication style and signature behaviors
+     - Known blind spots or cognitive biases
+     - How they behave under pressure
    - Starting agreement and aggression stats
    - Avatar color
 
-### 14.3 Adding Suggestions to Your Board
+### 15.3 Adding Suggestions to Your Board
 
-Click **"Add to Board"** on any suggestion. The member is added immediately and can be further customized.
+Click **"Add to Board"** on any suggestion. The member is added immediately (defaulting to Gemini 2.0 Flash) and can be further customized in the member editor, including changing their AI model.
 
-### 14.4 Example
+### 15.4 Example
 
 If your Whiteboard says *"Building an e-commerce platform for luxury goods"*, the AI Builder might suggest:
 
@@ -532,23 +626,25 @@ If your Whiteboard says *"Building an e-commerce platform for luxury goods"*, th
 - **Nadia** — Chief Customer Officer
 - **Tom** — Head of Digital Commerce
 
+Each suggestion comes with a detailed backstory and personality profile, not just a one-liner.
+
 ---
 
-## 15. The Agent Marketplace
+## 16. The Agent Marketplace
 
 The Marketplace lets users share and discover custom board members created by the community.
 
-### 15.1 Browse the Marketplace
+### 16.1 Browse the Marketplace
 
 1. Open the Member Editor.
 2. Switch to the **Marketplace** tab.
 3. Browse available agents — each shows name, role, description, and download count.
 
-### 15.2 Add a Marketplace Agent
+### 16.2 Add a Marketplace Agent
 
-Click **"Add to Board"** on any marketplace agent. It's copied to your board and can be customized.
+Click **"Add to Board"** on any marketplace agent. It's copied to your board and can be customized, including changing the AI model.
 
-### 15.3 Publish Your Own Agent
+### 16.3 Publish Your Own Agent
 
 1. Open the Member Editor and select a member you've created.
 2. Click **"Publish to Market"**.
@@ -558,57 +654,68 @@ Published agents show a download counter so you can see how popular they are.
 
 ---
 
-## 16. Managing Multiple Boards
+## 17. Managing Multiple Boards
 
-### 16.1 The Board Switcher
+### 17.1 The Board Switcher
 
-Click the **board switch** button in the sidebar header (or the Board Switcher section) to see all your saved boards.
+The board switcher button (list icon) sits inline next to the **Board Name** field in the sidebar. Click it to expand a dropdown listing all your saved boards.
 
 Each entry shows:
 - Board name
 - Last updated timestamp
 - Delete option
 
-### 16.2 Switch Boards
+### 17.2 Switch Boards
 
 Click any board in the list to load it. All state is restored: members, messages, whiteboard, minutes, and settings.
 
-### 16.3 Create a New Board
+### 17.3 Create a New Board
 
 Click **"New Boardroom"** in the Board Switcher. A fresh board is created with default members and an empty conversation.
 
 > **Free plan:** 1 board only.
 > **Pioneer plan:** Unlimited boards.
 
-### 16.4 Delete a Board
+### 17.4 Delete a Board
 
 Click the delete icon next to any board in the switcher. This is permanent.
 
-### 16.5 Auto-Save
+### 17.5 Auto-Save
 
-Your board auto-saves every time the conversation updates (with a 2-second debounce to prevent excessive writes). You can also click **Save** manually at any time.
+Your board auto-saves whenever any of the following change (2-second debounce):
+
+- **Chat messages** — after every exchange
+- **Board name** — as you type
+- **Board members** — after edits or additions
+- **Whiteboard content** — after edits
+
+When auto-save fires, the save icon briefly shows a spinning indicator, followed by a *"Saved!"* banner. You can also click **Save** manually at any time.
+
+> Auto-save only triggers for boards that already exist (have a board ID). The very first save of a new board happens when you send your first message.
 
 ---
 
-## 17. Token Usage Tracking
+## 18. Token Usage Tracking
 
 The app tracks how many AI tokens you consume across all your meetings. This counter persists across sessions.
 
-### 17.1 Where to Find It
+### 18.1 Where to Find It
 
 In the **top toolbar** on the right side, next to the message counter. It shows a ⚡ icon followed by your lifetime total (e.g. `⚡ 12,450`).
 
-### 17.2 How It Works
+### 18.2 How It Works
 
 Every time the AI generates a response — board member speeches, research lookups, vote processing, orchestrator decisions — the token count from that API call is added to your total. The counter updates in real time as the meeting progresses.
 
-### 17.3 What Counts as Tokens
+> **Note:** Token tracking currently covers Gemini API calls only. Responses from OpenRouter models are not counted toward this total.
+
+### 18.3 What Counts as Tokens
 
 Tokens include both the input (your prompt, conversation context, system instructions) and the output (the AI's response). A typical board member response uses roughly 300–1,500 tokens depending on the complexity of the discussion.
 
 ---
 
-## 18. Plans & Limits
+## 19. Plans & Limits
 
 ### Free Plan
 
@@ -646,7 +753,7 @@ If you cancel, your Pioneer access remains active until the end of the current b
 
 ---
 
-## 19. Tips & Best Practices
+## 20. Tips & Best Practices
 
 ### Writing Effective Proposals
 
@@ -665,6 +772,19 @@ If you cancel, your Pioneer access remains active until the end of the current b
 - Watch the **Board Alignment** panel. If a key member is dropping, address their concerns directly.
 - Members with low agreement are more likely to vote NO. Persuade them before calling a vote.
 - High-aggression members won't change their minds easily — frame arguments in terms they care about.
+
+### Using the Voting System
+
+- **Edit the proposal** in the Vote Setup modal before running the vote — the AI's generated motion is a starting point, not final.
+- **Add a clarification note** to steer the vote without rewriting the motion: *"Assume budget approval is already secured."*
+- **Use multi-option voting** when there are genuinely 3+ competing approaches — binary YES/NO often forces a false choice.
+- Let the discussion develop before calling a vote. Members who are 50%+ agreement are more likely to vote YES.
+
+### Choosing AI Models for Members
+
+- Assign Claude 3.5 Sonnet or GPT-4o to roles that need careful, nuanced reasoning (Legal, CFO).
+- Use faster models (Claude Haiku, GPT-4o Mini) for members with simpler, more reactive personalities.
+- Mix models intentionally — a board where every member runs the same model tends to echo itself.
 
 ### Using Research Effectively
 
@@ -686,7 +806,7 @@ If you cancel, your Pioneer access remains active until the end of the current b
 
 ---
 
-## 20. Troubleshooting
+## 21. Troubleshooting
 
 ### "The Board is overwhelmed (Rate Limit)"
 
@@ -694,7 +814,11 @@ You've hit the API rate limit. Wait 30–60 seconds and try again. The app retri
 
 ### Board members give generic responses
 
-Your Whiteboard is probably too vague. Add specific project details, constraints, and goals. The more context you provide, the more targeted the responses.
+Your Whiteboard is probably too vague. Add specific project details, constraints, and goals. The more context you provide, the more targeted the responses. You can also try switching that member to a more capable model (Claude 3.5 Sonnet or GPT-4o).
+
+### An OpenRouter member isn't responding
+
+Ensure the `VITE_OPENROUTER_API_KEY` environment variable is set on the server. Without it, OpenRouter models will silently fail and the member will show `"..."` as their response. Contact your administrator if you don't have access to set environment variables.
 
 ### A member keeps getting picked
 
@@ -704,7 +828,7 @@ The Orchestrator picks based on relevance. If discussions consistently fall in o
 
 Auto-Mode stops after:
 - 20 turns (max limit)
-- A vote is called
+- A vote is called (Vote Setup modal opens)
 - You click "Auto: Off" or press Escape
 - A rate limit error occurs
 
@@ -726,27 +850,35 @@ Use the **Forgot Password** link on the login screen. A reset email will be sent
 
 ---
 
-## 21. Glossary
+## 22. Glossary
 
 | Term | Definition |
 |------|------------|
 | **Agreement** | A member's alignment score (0–100%) indicating how much they support the current direction |
 | **Aggression** | How forcefully a member pushes their position (0–100%) |
+| **AI Model** | The specific AI (Gemini, Claude, GPT-4o, etc.) assigned to a board member for generating their responses |
 | **Auto-Mode** | Continuous conversation mode where the board debates without user input |
+| **Binary Vote** | A YES/NO vote on a single motion — passes if YES outnumbers NO |
 | **Board** | A saved boardroom session including members, conversation, whiteboard, and minutes |
+| **Board Switcher** | The list icon next to the board name that opens a dropdown of all saved boards |
 | **Briefing** | Instructions the Orchestrator gives to the next speaker about what angle to take |
-| **Friction** | Points of disagreement tracked in the meeting minutes |
+| **Clarification Note** | An optional note added in the Vote Setup modal, injected into the vote prompt to guide member reasoning |
 | **Escape (key)** | Keyboard shortcut that stops auto-mode, clears processing, and returns control to you |
+| **Friction** | Points of disagreement tracked in the meeting minutes |
 | **Marketplace** | Public library of community-created board members |
+| **Model Badge** | The small colored tag on each member's sidebar card showing their assigned AI model |
+| **Multi-Option Vote** | A vote with 2–4 labeled options; each member picks one, and the most-voted option wins |
 | **My Library** | Your private collection of saved agent templates, reusable across boards |
 | **Minutes** | Automatically tracked meeting metrics: momentum, consensus, friction, action items |
+| **OpenRouter** | A routing service that provides access to Claude, GPT-4o, Llama, Mistral, and other models via a unified API |
 | **Orchestrator** | The AI agent that manages meeting flow — picks speakers, triggers research, calls votes |
 | **Pioneer** | The paid plan tier with unlimited features |
 | **Resolution** | The formal outcome statement written after a vote |
 | **Speaker Picker** | The UI that appears after your message, letting you choose who responds |
 | **Tokens Used** | Running counter of AI tokens consumed across all meetings, displayed in the top toolbar |
+| **Vote Setup Modal** | The modal that appears before any vote runs, letting you review and edit the motion, choose vote type, add options, and add a clarification note |
 | **Whiteboard** | Freeform text defining the meeting context — project details, constraints, goals |
 
 ---
 
-*Built with React, Google Gemini AI, and Supabase.*
+*Built with React, Google Gemini AI, Supabase, and OpenRouter.*
