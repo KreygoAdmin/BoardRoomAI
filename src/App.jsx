@@ -26,6 +26,8 @@ import TemplateModal from './components/modals/TemplateModal.jsx';
 import MemberConfigModal from './components/modals/MemberConfigModal.jsx';
 import ChatStage from './components/ChatStage.jsx';
 import Sidebar from './components/Sidebar.jsx';
+import TutorialOverlay from './components/TutorialOverlay.jsx';
+import { useTutorial } from './hooks/useTutorial.js';
 
 /* ===================================================================
   BOARDROOM SIMULATOR - MULTI-AGENT ORCHESTRATION SYSTEM
@@ -190,6 +192,7 @@ export default function App() {
   const [minutesCollapsed, setMinutesCollapsed] = useState(true);
   // Template Modal State
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('blank');
   const [pendingBoardName, setPendingBoardName] = useState('New Boardroom');
   const [templateCustomizeOpen, setTemplateCustomizeOpen] = useState(false);
@@ -202,6 +205,29 @@ export default function App() {
   const [setupTimeline, setSetupTimeline] = useState('');
   const messagesEndRef = useRef(null);
   const whiteboardSnapshot = useRef("");
+
+  // --- TUTORIAL ---
+  const {
+    showPromptModal: tutorialPrompt,
+    isActive: tutorialActive,
+    stepIndex: tutorialStep,
+    steps: tutorialSteps,
+    currentStep: tutorialCurrentStep,
+    isLastStep: tutorialIsLastStep,
+    maybeShowPrompt: tutorialMaybeShow,
+    startTutorial,
+    skipTutorial,
+    nextStep: tutorialNext,
+    prevStep: tutorialPrev,
+  } = useTutorial(session?.user?.id);
+
+  const tutorialTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (meetingSetupDone && session && !tutorialTriggeredRef.current) {
+      tutorialTriggeredRef.current = true;
+      tutorialMaybeShow();
+    }
+  }, [meetingSetupDone, session, tutorialMaybeShow]);
 
 
   // --- DATA PERSISTENCE (LOAD) ---
@@ -228,12 +254,37 @@ export default function App() {
         setBoardMembers(data.members);
         setMessages(data.messages);
         setWhiteboardFacts(data.whiteboard);
+        setMeetingSetupDone(true);
 
         if (data.settings && data.settings.autoResearch !== undefined) {
             setAutoResearch(data.settings.autoResearch);
         }
         if (data.settings?.minutes) {
             setMinutes(data.settings.minutes);
+        }
+      } else {
+        // No boards exist — first-time user. Open template modal with welcome flow.
+        const timeStr = formatCST();
+        const blankTemplate = BOARD_TEMPLATES[0];
+        const initialWhiteboard = blankTemplate.whiteboard(timeStr);
+        setSelectedTemplateId('blank');
+        setPendingBoardName('New Boardroom');
+        setTemplateCustomizeOpen(false);
+        setPendingMembers([...DEFAULT_BOARD]);
+        setPendingWhiteboard(initialWhiteboard);
+        setAIBuilderMessages([]);
+        setAddedSuggestionIds(new Set());
+        setIsFirstTimeUser(true);
+        setShowTemplateModal(true);
+        // Auto-init AI builder
+        setIsAIBuilderLoading(true);
+        const initResponse = await runAIBuilderAgent([], { members: DEFAULT_BOARD, whiteboard: initialWhiteboard });
+        setIsAIBuilderLoading(false);
+        if (!initResponse || initResponse.type === 'message') {
+          setAIBuilderMessages([{ role: 'assistant', type: 'ai-chat', text: "Describe your project and I'll suggest the right board members." }]);
+        } else if (initResponse.type === 'suggestions') {
+          const sid = Date.now().toString();
+          setAIBuilderMessages([{ role: 'assistant', type: 'suggestions', text: initResponse.intro || "Here are my starting recommendations:", members: initResponse.members.map((m, i) => ({ ...m, id: `sugg_${sid}_${i}` })) }]);
         }
       }
     };
@@ -413,6 +464,7 @@ export default function App() {
       setBoardMembers(data.members);
       setMessages(data.messages);
       setWhiteboardFacts(data.whiteboard);
+      setMeetingSetupDone(true);
       if (data.settings?.minutes) {
         setMinutes(data.settings.minutes);
       } else {
@@ -486,6 +538,37 @@ export default function App() {
     setSetupTimeline('');
     setShowTemplateModal(false);
     setTemplateCustomizeOpen(false);
+    setIsFirstTimeUser(false);
+  };
+
+  // --- START FRESH (free tier: delete current board and open template picker) ---
+  const handleStartFresh = async () => {
+    if (!window.confirm("Delete this boardroom and start a new one?\n\nThis cannot be undone.")) return;
+    if (boardId) {
+      await supabase.from('boardrooms').delete().eq('id', boardId);
+    }
+    const timeStr = formatCST();
+    const blankTemplate = BOARD_TEMPLATES[0];
+    const initialWhiteboard = blankTemplate.whiteboard(timeStr);
+    setBoardId(null);
+    setSelectedTemplateId('blank');
+    setPendingBoardName('New Boardroom');
+    setTemplateCustomizeOpen(false);
+    setPendingMembers([...DEFAULT_BOARD]);
+    setPendingWhiteboard(initialWhiteboard);
+    setAIBuilderMessages([]);
+    setAddedSuggestionIds(new Set());
+    setShowBoardSwitcher(false);
+    setShowTemplateModal(true);
+    setIsAIBuilderLoading(true);
+    const initResponse = await runAIBuilderAgent([], { members: DEFAULT_BOARD, whiteboard: initialWhiteboard });
+    setIsAIBuilderLoading(false);
+    if (!initResponse || initResponse.type === 'message') {
+      setAIBuilderMessages([{ role: 'assistant', type: 'ai-chat', text: "Describe your project and I'll suggest the right board members." }]);
+    } else if (initResponse.type === 'suggestions') {
+      const sid = Date.now().toString();
+      setAIBuilderMessages([{ role: 'assistant', type: 'suggestions', text: initResponse.intro || "Here are my starting recommendations:", members: initResponse.members.map((m, i) => ({ ...m, id: `sugg_${sid}_${i}` })) }]);
+    }
   };
 
   // --- DELETE BOARD ---
@@ -1160,7 +1243,7 @@ export default function App() {
         boardName={boardName} setBoardName={setBoardName}
         showBoardSwitcher={showBoardSwitcher} setShowBoardSwitcher={setShowBoardSwitcher} loadBoardList={loadBoardList}
         boardList={boardList} boardId={boardId} loadBoardById={loadBoardById}
-        handleCreateBoard={handleCreateBoard} handleDeleteBoard={handleDeleteBoard}
+        handleCreateBoard={handleCreateBoard} handleDeleteBoard={handleDeleteBoard} handleStartFresh={handleStartFresh}
         whiteboardCollapsed={whiteboardCollapsed} setWhiteboardCollapsed={setWhiteboardCollapsed}
         whiteboardFacts={whiteboardFacts} setWhiteboardFacts={setWhiteboardFacts}
         showSettings={showSettings} setShowSettings={setShowSettings} whiteboardSnapshot={whiteboardSnapshot}
@@ -1233,7 +1316,8 @@ export default function App() {
           handleAIBuilderSend={handleAIBuilderSend}
           addSuggestedMember={addSuggestedMember}
           handleCreateFromTemplate={handleCreateFromTemplate}
-          onClose={() => setShowTemplateModal(false)}
+          isFirstTime={isFirstTimeUser}
+          onClose={() => { setShowTemplateModal(false); setIsFirstTimeUser(false); }}
         />
       )}
       {/* --- Vote Setup Modal --- */}
@@ -1245,6 +1329,20 @@ export default function App() {
       {showReportModal && reportData && (
         <ReportModal reportData={reportData} onClose={() => setShowReportModal(false)} />
       )}
+
+      {/* --- Tutorial Overlay --- */}
+      <TutorialOverlay
+        showPromptModal={tutorialPrompt}
+        isActive={tutorialActive}
+        currentStep={tutorialCurrentStep}
+        stepIndex={tutorialStep}
+        totalSteps={tutorialSteps.length}
+        isLastStep={tutorialIsLastStep}
+        onStart={startTutorial}
+        onSkip={skipTutorial}
+        onNext={tutorialNext}
+        onPrev={tutorialPrev}
+      />
     </div>
   );
 }

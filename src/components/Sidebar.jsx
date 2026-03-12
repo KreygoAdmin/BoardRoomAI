@@ -13,7 +13,7 @@ export default function Sidebar({
   handleSaveBoard, saveStatus,
   boardName, setBoardName,
   showBoardSwitcher, setShowBoardSwitcher, loadBoardList,
-  boardList, boardId, loadBoardById, handleCreateBoard, handleDeleteBoard,
+  boardList, boardId, loadBoardById, handleCreateBoard, handleDeleteBoard, handleStartFresh,
   whiteboardCollapsed, setWhiteboardCollapsed,
   whiteboardFacts, setWhiteboardFacts,
   showSettings, setShowSettings, whiteboardSnapshot,
@@ -70,9 +70,14 @@ export default function Sidebar({
           </button>
         )}
         {userPlan === 'free' && (
-          <button onClick={() => alert("Upgrade to Pioneer to create multiple boardrooms!")} className="w-full flex items-center justify-center gap-2 py-2 bg-gray-800 text-gray-500 border border-gray-700 rounded text-xs cursor-not-allowed">
-            <Plus size={14} /> New Boardroom <span className="text-[9px] bg-yellow-600/30 text-yellow-400 px-1 rounded">PIONEER</span>
-          </button>
+          <div className="space-y-1.5">
+            <button onClick={() => alert("Upgrade to Pioneer to create multiple boardrooms!")} className="w-full flex items-center justify-center gap-2 py-2 bg-gray-800 text-gray-500 border border-gray-700 rounded text-xs cursor-not-allowed">
+              <Plus size={14} /> New Boardroom <span className="text-[9px] bg-yellow-600/30 text-yellow-400 px-1 rounded">PIONEER</span>
+            </button>
+            <button onClick={handleStartFresh} className="w-full flex items-center justify-center gap-2 py-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/50 rounded text-xs transition-colors">
+              <Trash2 size={13} /> Delete & Start Fresh
+            </button>
+          </div>
         )}
         <div className="max-h-48 overflow-y-auto space-y-1">
           {boardList.length === 0 && <p className="text-[10px] text-gray-600 text-center py-2">No saved boards yet</p>}
@@ -202,7 +207,7 @@ export default function Sidebar({
 
       {/* --- Board Alignment (collapsible) --- */}
       <div className="border-b border-gray-800">
-        <button onClick={() => setAlignmentCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
+        <button id="tutorial-board-members" onClick={() => setAlignmentCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
           <h2 className="text-xs font-bold text-gray-400 uppercase">Board Members</h2>
           <div className="flex items-center gap-2">
             <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); }} className="text-gray-500 hover:text-white transition-colors"><Edit size={12} /></button>

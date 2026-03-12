@@ -236,9 +236,10 @@ bg-blue-600, bg-purple-600, bg-yellow-600, bg-pink-600, bg-green-600, bg-red-600
 
 TASK:
 Based on the whiteboard context and the conversation history, decide:
-1. If the user's latest message contains specific feedback, a request, or a direction (e.g. "add someone focused on X", "I want a skeptic", "no, focus on Y"), generate NEW suggestions that directly address what they said. Do NOT repeat the roles you already suggested.
-2. If the conversation is empty or you genuinely need specific information to give useful suggestions, ask 1-2 targeted clarifying questions.
-3. Otherwise, return 4-6 board member suggestions tailored to the project and any prior conversation.
+1. If the user's latest message directly requests ONE specific person or role (e.g. "add a cynical HR lead", "I want an aggressive COO", "give me a skeptical finance person"), return EXACTLY 1 member that precisely matches that description. Do NOT return a general list in this case.
+2. If the user's latest message contains broader feedback, a direction, or multiple requests (e.g. "add someone focused on X", "no, focus on Y", "I want 3 different options"), generate NEW suggestions that directly address what they said. Do NOT repeat the roles you already suggested.
+3. If the conversation is empty or you genuinely need specific information to give useful suggestions, ask 1-2 targeted clarifying questions.
+4. Otherwise, return 4-6 board member suggestions tailored to the project and any prior conversation.
 
 RULES:
 - Never suggest a role that already exists in the existing board members list.

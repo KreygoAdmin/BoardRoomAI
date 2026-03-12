@@ -9,6 +9,7 @@ export default function Auth() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -68,10 +69,10 @@ export default function Auth() {
         </div>
         
         <h1 className="text-2xl font-bold text-center text-white mb-2">
-          {isResetting ? "Reset Password" : "Welcome Back"}
+          {isResetting ? "Reset Password" : isSigningUp ? "Create Account" : "Welcome Back"}
         </h1>
         <p className="text-center text-gray-400 mb-8 text-sm">
-          {isResetting ? "We'll send a recovery link to your email" : "Sign in to access your Boardroom"}
+          {isResetting ? "We'll send a recovery link to your email" : isSigningUp ? "Simulate board meetings with AI executives" : "Sign in to access your Boardroom"}
         </p>
 
         {error && (
@@ -137,8 +138,25 @@ export default function Auth() {
                 Back to Login
               </button>
             </div>
+          ) : isSigningUp ? (
+            <div className="space-y-3">
+              <button
+                onClick={handleSignUp}
+                disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded transition-all flex items-center justify-center gap-2 mt-4"
+              >
+                {loading ? <Loader2 size={18} className="animate-spin" /> : "Create Account"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsSigningUp(false); setError(null); }}
+                className="w-full text-gray-500 hover:text-gray-300 text-xs font-bold uppercase"
+              >
+                Already have an account? Sign In
+              </button>
+            </div>
           ) : (
-            <>
+            <div className="space-y-3">
               <button
                 onClick={handleLogin}
                 disabled={loading}
@@ -146,15 +164,14 @@ export default function Auth() {
               >
                 {loading ? <Loader2 size={18} className="animate-spin" /> : "Sign In"}
               </button>
-              
               <button
-                onClick={handleSignUp}
-                disabled={loading}
-                className="w-full bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white font-bold py-3 rounded transition-all text-sm"
+                type="button"
+                onClick={() => { setIsSigningUp(true); setError(null); }}
+                className="w-full text-gray-500 hover:text-gray-300 text-xs font-bold uppercase"
               >
-                Create an Account
+                New here? Create an Account
               </button>
-            </>
+            </div>
           )}
         </form>
       </div>

@@ -290,7 +290,7 @@ export default function MemberConfigModal({
         ) : (
           // --- YOUR BOARD VIEW ---
           <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-            <div className="w-full md:w-1/3 h-48 md:h-auto border-b md:border-b-0 md:border-r border-gray-800 bg-gray-900/50 flex flex-col">
+            <div className="w-full md:w-1/3 h-64 md:h-auto border-b md:border-b-0 md:border-r border-gray-800 bg-gray-900/50 flex flex-col">
               <div className="p-2 overflow-y-auto flex-1 space-y-2">
                 {boardMembers.map(m => (
                   <div key={m.id} onClick={() => handleEditMember(m)} className={`p-3 rounded cursor-pointer border transition-all ${editingMember?.id === m.id ? 'bg-indigo-900/30 border-indigo-500' : 'bg-gray-800 border-gray-700 hover:border-gray-600'}`}>

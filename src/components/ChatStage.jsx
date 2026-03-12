@@ -48,6 +48,7 @@ export default function ChatStage({
            <Users size={14} /> <span className="hidden sm:inline">Next Speaker</span>
          </button>
          <button
+           id="tutorial-automode-toggle"
            onClick={() => {
              const newVal = !autoMode;
              setAutoMode(newVal);
@@ -265,6 +266,7 @@ export default function ChatStage({
     <div className="p-4 border-t border-gray-800 bg-gray-900">
       <div className="flex gap-2 max-w-4xl mx-auto">
         <input
+          id="tutorial-message-input"
           type="text"
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
@@ -283,6 +285,7 @@ export default function ChatStage({
           <Search size={16} />
         </button>
         <button
+          id="tutorial-vote-button"
           onClick={() => openVoteModal()}
           disabled={isProcessing}
           className="flex items-center justify-center w-11 h-11 bg-indigo-900/30 hover:bg-indigo-900/50 text-indigo-400 border border-indigo-900/60 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
@@ -291,6 +294,7 @@ export default function ChatStage({
           <Vote size={16} />
         </button>
         <button
+          id="tutorial-send-button"
           onClick={handleUserTurn}
           disabled={isProcessing || !!speakerPickState || !userInput.trim() || autoMode}
           className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center flex-shrink-0"

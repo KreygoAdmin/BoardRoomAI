@@ -103,6 +103,7 @@ export const BOARD_TEMPLATES = [
     icon: '⬜',
     name: 'Blank Board',
     description: 'Start fresh. You configure everything — members, whiteboard, and agenda.',
+    suggestedPurpose: '',
     members: DEFAULT_BOARD,
     whiteboard: (timeStr) =>
       `Session Start: ${timeStr} CST\n\nProject: 'New Project'\nGoal: TBD\nBudget: TBD\nTimeline: TBD`,
@@ -117,6 +118,7 @@ export const BOARD_TEMPLATES = [
     icon: '🚀',
     name: 'Product Launch',
     description: 'Marketing, Product, Tech, Legal, and Finance debate launch strategy, timing, and budget.',
+    suggestedPurpose: 'We are 3 months from launch and need to finalize our go-to-market strategy, align on timing, and get sign-off on the launch budget.',
     members: [
       { id: 'cpo-pl', name: 'Jordan', role: 'CPO', avatar: 'bg-indigo-600',
         description: 'Visionary product leader. Focused on user value, roadmap prioritization, and shipping on time. Pushes back on scope creep.',
@@ -147,6 +149,7 @@ export const BOARD_TEMPLATES = [
     icon: '🚨',
     name: 'Crisis Management',
     description: 'Legal, PR/Comms, CEO, CFO, and COO respond to a breaking crisis scenario.',
+    suggestedPurpose: 'A major incident has just broken publicly and we need to align immediately on our response, public statement, and containment strategy.',
     members: [
       { id: 'ceo-cr', name: 'Victoria', role: 'CEO', avatar: 'bg-red-600',
         description: 'Crisis-seasoned CEO. Focused on protecting the company reputation, employees, and stakeholders. Will make the hard call under pressure.',
@@ -177,6 +180,7 @@ export const BOARD_TEMPLATES = [
     icon: '🤝',
     name: 'M&A / Due Diligence',
     description: 'CFO, Legal, Strategy, Integration Lead, and CEO evaluate a potential acquisition target.',
+    suggestedPurpose: 'We are evaluating a potential acquisition and need to assess the financials, legal risk, integration complexity, and whether the deal price is justified.',
     members: [
       { id: 'ceo-ma', name: 'Franklin', role: 'CEO', avatar: 'bg-red-600',
         description: "Deal-hungry CEO. Sees the strategic vision clearly but needs the team to validate the risks and ensure integration is executable.",
@@ -207,6 +211,7 @@ export const BOARD_TEMPLATES = [
     icon: '💻',
     name: 'Tech Stack Decision',
     description: 'CTO, CISO, COO, CFO, and Engineering Lead evaluate a major technology platform decision.',
+    suggestedPurpose: 'We need to decide on our core technology platform for the next 3 years and align on which option best balances cost, security, and developer productivity.',
     members: [
       { id: 'cto-ts', name: 'Sanjay', role: 'CTO', avatar: 'bg-purple-600',
         description: 'Forward-thinking CTO. Pushes for modern, scalable architectures. Excited about the right tech choice and frustrated by legacy constraints.',
@@ -237,6 +242,7 @@ export const BOARD_TEMPLATES = [
     icon: '🌱',
     name: 'Startup Strategy',
     description: 'Early-stage founding team — CEO, CTO, Head of Growth, Advisor, and Finance — debates direction.',
+    suggestedPurpose: 'We are early-stage and need to pressure-test our current strategy, align on our top 3 bets for the next 90 days, and decide what to cut given our runway.',
     members: [
       { id: 'ceo-ss', name: 'Zoe', role: 'CEO', avatar: 'bg-red-600',
         description: 'Founding CEO. Driven, vision-obsessed, and sometimes too optimistic. Needs the team to stress-test the plan and keep her grounded.',

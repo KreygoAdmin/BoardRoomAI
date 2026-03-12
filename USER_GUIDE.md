@@ -1,14 +1,14 @@
 # Boardroom Simulator — User Guide
 
-> **Version:** 1.1
-> **Last Updated:** February 2026
+> **Version:** 1.2
+> **Last Updated:** March 2026
 
 ---
 
 ## Table of Contents
 
 1. [What Is Boardroom Simulator?](#1-what-is-boardroom-simulator)
-2. [Getting Started](#2-getting-started)
+2. [Getting Started](#2-getting-started) *(includes Templates)*
 3. [The Interface](#3-the-interface)
 4. [The Board Members](#4-the-board-members)
 5. [Running a Meeting](#5-running-a-meeting)
@@ -53,9 +53,10 @@ Each board member is powered by an AI model of your choosing (Google Gemini by d
 ### 2.1 Create an Account
 
 1. Open the app in your browser.
-2. On the login screen, click **Create Account**.
-3. Enter your email and a password.
-4. You're in — the app creates a default boardroom with five executives.
+2. On the login screen, click **"New here? Create an Account"**.
+3. Enter your email and a password, then click **Create Account**.
+4. Check your email for a confirmation link and click it.
+5. Sign in — you'll land directly in the boardroom setup.
 
 ### 2.2 Log In
 
@@ -65,13 +66,30 @@ If you've forgotten your password, click **Forgot Password?**, enter your email,
 
 ### 2.3 Your First Meeting
 
-Once logged in, you'll see the boardroom interface. Here's the quickest way to run your first meeting:
+When you sign in for the first time, the **New Boardroom** setup opens automatically. Fill it in and click **Start Meeting** — you'll land in the boardroom ready to go.
 
-1. **Update the Whiteboard** (left sidebar) with your project details — name, goal, budget, timeline.
-2. **Type your proposal** in the input field at the bottom: *"We should build X because Y."*
-3. **Pick a speaker** — the AI recommends who should respond first, but you can choose anyone.
-4. **Read the response** and reply, or let the board keep talking with Auto-Mode.
-5. **Call a vote** when you're ready for a decision.
+1. **Choose a template** — pick one that matches your scenario (see [Section 2.4](#24-templates) below), or start with Blank Board.
+2. **Set a meeting purpose** — describe what this meeting is about. The more specific, the better the debate.
+3. **Review your board members** — the template pre-loads a relevant roster. Remove any members you don't want, or use the AI Builder tab to get custom suggestions.
+4. **Click "Start Meeting"** — you're in.
+5. **Type your proposal** in the input field and press Enter.
+6. **Pick a speaker**, read their response, and keep the conversation going.
+7. **Call a vote** when you're ready for a decision.
+
+### 2.4 Templates
+
+When creating a new boardroom, pick a starting template:
+
+| Template | Best for |
+|---|---|
+| ⬜ Blank Board | General use — default CFO, CTO, CMO, Legal, COO |
+| 🚀 Product Launch | Go/no-go decisions, launch timing, GTM strategy |
+| 🚨 Crisis Management | PR incidents, data breaches, damage control |
+| 🤝 M&A / Due Diligence | Acquisition evaluation, deal risk, integration planning |
+| 💻 Tech Stack Decision | Platform choices, migrations, build vs. buy |
+| 🌱 Startup Strategy | Early-stage prioritization, PMF, runway decisions |
+
+Each template pre-loads a board of 5 executives specialized for that scenario and fills the whiteboard with a relevant starting structure. You can customize members and whiteboard content before starting.
 
 ---
 
@@ -671,7 +689,7 @@ Click any board in the list to load it. All state is restored: members, messages
 
 ### 17.3 Create a New Board
 
-Click **"New Boardroom"** in the Board Switcher. A fresh board is created with default members and an empty conversation.
+Click **"New Boardroom"** in the Board Switcher. The **New Boardroom** setup modal opens — choose a template, set your meeting purpose, customize members, and click **Start Meeting**. See [Section 2.4](#24-templates) for template descriptions.
 
 > **Free plan:** 1 board only.
 > **Pioneer plan:** Unlimited boards.
