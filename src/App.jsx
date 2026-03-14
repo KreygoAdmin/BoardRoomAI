@@ -31,6 +31,7 @@ import ChatStage from './components/ChatStage.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import TutorialOverlay from './components/TutorialOverlay.jsx';
 import { useTutorial } from './hooks/useTutorial.js';
+import { useSounds } from './hooks/useSounds.js';
 
 /* ===================================================================
   BOARDROOM SIMULATOR - MULTI-AGENT ORCHESTRATION SYSTEM
@@ -46,6 +47,9 @@ const openRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
 
 // --- Main Component ---
 export default function App() {
+  // --- SOUNDS ---
+  const sounds = useSounds();
+
   // --- SESSION STATE ---
   const [session, setSession] = useState(null);
 
@@ -488,7 +492,6 @@ export default function App() {
   // Headphones mode: auto-speak new assistant messages (must be before gatekeeper)
   const prevMessageCountRef = useRef(0);
   useEffect(() => {
-    if (!headphonesMode) return;
     if (messages.length <= prevMessageCountRef.current) {
       prevMessageCountRef.current = messages.length;
       return;
@@ -496,7 +499,9 @@ export default function App() {
     prevMessageCountRef.current = messages.length;
     const last = messages[messages.length - 1];
     if (last?.role === 'assistant' && last?.text) {
-      speakText(last.text, last.voice_id || "", messages.length - 1);
+      // Always play the receive chime for new AI messages (skip if headphones mode is on — TTS is the feedback)
+      if (!headphonesMode) sounds.receive();
+      if (headphonesMode) speakText(last.text, last.voice_id || "", messages.length - 1);
     }
   }, [messages, headphonesMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -810,6 +815,7 @@ export default function App() {
     }
 
     const userMsg = { role: 'user', sender: 'User', text: userInput, type: 'chat' };
+    sounds.send();
     setMessages(prev => [...prev, userMsg]);
     setUserInput("");
     setIsProcessing(true);
@@ -830,6 +836,7 @@ export default function App() {
         setProcessingStage("Looking it up...");
         const research = await runResearchAgent(orchestration.researchQuery);
         if (research) {
+          sounds.research();
           setMessages(prev => [...prev, {
             role: 'system',
             sender: 'Research',
@@ -844,6 +851,7 @@ export default function App() {
       // Show speaker picker — user chooses who responds (or accepts AI recommendation)
       setIsProcessing(false);
       setProcessingStage("");
+      sounds.speakerPick();
       setSpeakerPickState({ orchestration, recommendation: orchestration.memberObj });
 
     } catch (error) {
@@ -868,6 +876,7 @@ export default function App() {
       setMinutes(orchestration.minutes);
       setIsProcessing(false);
       setProcessingStage("");
+      sounds.speakerPick();
       setSpeakerPickState({ orchestration, recommendation: orchestration.memberObj });
     } catch (error) {
       console.error("Continue failed:", error);
@@ -942,6 +951,7 @@ export default function App() {
       setIsProcessing(false);
       setProcessingStage("");
     }
+    sounds.vote();
     setPendingVote({ proposal: proposal || "", options: [], clarification: "" });
   };
 
@@ -1019,6 +1029,8 @@ export default function App() {
         resolution,
         proposal,
         options,
+        isTie,
+        tiedKeys,
       }]);
 
       const yesVotes = options.length < 2 ? results.filter(r => r.vote === 'YES').length : null;
@@ -1387,6 +1399,7 @@ export default function App() {
     setProcessingStage("Looking it up...");
     const research = await runResearchAgent(queryResult.trim());
     if (research) {
+      sounds.research();
       setMessages(prev => [...prev, {
         role: 'system',
         sender: 'Research',
@@ -1451,6 +1464,7 @@ export default function App() {
         setWhiteboardFacts={setWhiteboardFacts} userInput={userInput} setUserInput={setUserInput}
         speakerPickState={speakerPickState} setSpeakerPickState={setSpeakerPickState} handlePickSpeaker={handlePickSpeaker}
         handleUserTurn={handleUserTurn} handleManualResearch={handleManualResearch} openVoteModal={openVoteModal}
+        sounds={sounds}
         showResetModal={showResetModal} setShowResetModal={setShowResetModal}
         newPassword={newPassword} setNewPassword={setNewPassword}
         resetLoading={resetLoading} handlePasswordUpdate={handlePasswordUpdate}

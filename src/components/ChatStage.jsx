@@ -23,7 +23,7 @@ export default function ChatStage({
   // Speaker picker
   speakerPickState, setSpeakerPickState, handlePickSpeaker,
   // Input bar
-  handleUserTurn, handleManualResearch, openVoteModal,
+  handleUserTurn, handleManualResearch, openVoteModal, sounds,
   // Password Reset Modal
   showResetModal, setShowResetModal, newPassword, setNewPassword, resetLoading, handlePasswordUpdate,
   // Member Config Modal
@@ -82,13 +82,14 @@ export default function ChatStage({
           )}
       </div>
       <div className="flex gap-2 overflow-x-auto min-w-0 pb-0.5">
-         <button id="tutorial-next-speaker" onClick={handleContinue} disabled={isProcessing || messages.length === 0 || !!speakerPickState || autoMode} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded text-xs transition-colors disabled:opacity-50" title="Pick who speaks next without sending a message">
+         <button id="tutorial-next-speaker" onClick={() => { sounds?.click(); handleContinue(); }} disabled={isProcessing || messages.length === 0 || !!speakerPickState || autoMode} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded text-xs transition-colors disabled:opacity-50" title="Pick who speaks next without sending a message">
            <Users size={14} /> <span className="hidden sm:inline">Next Speaker</span>
          </button>
          <button
            id="tutorial-automode-toggle"
            onClick={() => {
              const newVal = !autoMode;
+             if (newVal) sounds?.autoOn(); else sounds?.autoOff();
              setAutoMode(newVal);
              autoModeRef.current = newVal;
              if (newVal) {
@@ -115,7 +116,7 @@ export default function ChatStage({
          </button>
          <button
            id="tutorial-auto-research"
-           onClick={() => setAutoResearch(prev => !prev)}
+           onClick={() => { sounds?.click(); setAutoResearch(prev => !prev); }}
            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${autoResearch ? 'bg-cyan-900/30 text-cyan-400 border-cyan-900 hover:bg-cyan-900/50' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700'}`}
            title={autoResearch ? "Auto-research is ON — click to disable" : "Auto-research is OFF — click to enable"}
          >
@@ -123,7 +124,7 @@ export default function ChatStage({
          </button>
          <button
            id="tutorial-headphones"
-           onClick={() => setHeadphonesMode(prev => !prev)}
+           onClick={() => { sounds?.click(); setHeadphonesMode(prev => !prev); }}
            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${headphonesMode ? 'bg-violet-900/30 text-violet-400 border-violet-900 hover:bg-violet-900/50' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700'}`}
            title={headphonesMode ? "Headphones Mode ON — new messages are auto-spoken" : "Headphones Mode OFF"}
          >
@@ -132,7 +133,7 @@ export default function ChatStage({
          </button>
          <button
            id="tutorial-brief-mode"
-           onClick={() => setBriefMode(prev => !prev)}
+           onClick={() => { sounds?.click(); setBriefMode(prev => !prev); }}
            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${briefMode ? 'bg-orange-900/30 text-orange-400 border-orange-900 hover:bg-orange-900/50' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700'}`}
            title={briefMode ? "Brief Mode ON — responses are 3 sentences max" : "Brief Mode OFF — verbose responses"}
          >

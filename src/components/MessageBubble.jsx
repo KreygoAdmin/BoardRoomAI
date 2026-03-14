@@ -45,16 +45,19 @@ export default function MessageBubble({ msg, idx, onDismiss, onSpeak, isSpeaking
 
   if (msg.type === 'vote-result') {
     const isMulti = msg.options && msg.options.length >= 2;
+    const isTie = isMulti && msg.isTie;
+    const tiedKeys = isTie ? (msg.tiedKeys || []) : [];
     const tally = isMulti ? (() => {
       const t = {};
       msg.options.forEach((_, i) => { t[String.fromCharCode(65 + i)] = 0; });
       msg.details.forEach(r => { if (t[r.vote] !== undefined) t[r.vote]++; });
       return t;
     })() : null;
-    const winnerKey = isMulti ? Object.keys(tally).reduce((a, b) => tally[a] >= tally[b] ? a : b) : null;
+    // Only declare a single winner if there's no tie
+    const winnerKey = (isMulti && !isTie) ? Object.keys(tally).reduce((a, b) => tally[a] > tally[b] ? a : b) : null;
     const optionColors = ['bg-indigo-600', 'bg-purple-600', 'bg-pink-600', 'bg-orange-600'];
     return (
-      <div className="p-4 my-4 border border-gray-700 rounded-lg bg-gray-800/80">
+      <div className={`p-4 my-4 border rounded-lg bg-gray-800/80 ${isTie ? 'border-amber-800' : 'border-gray-700'}`}>
         {msg.proposal && (
           <div className="mb-3 p-3 bg-indigo-900/30 border border-indigo-800 rounded">
             <div className="text-[10px] font-bold text-indigo-400 uppercase mb-1">Motion on the Table</div>
@@ -63,28 +66,42 @@ export default function MessageBubble({ msg, idx, onDismiss, onSpeak, isSpeaking
         )}
         <h3 className="mb-3 text-sm font-bold text-white uppercase border-b border-gray-700 pb-2 flex justify-between">
           <span>Vote Results</span>
-          <span className="text-green-400">{isMulti ? `Option ${winnerKey} Wins` : (msg.text.includes("PASSED") ? "PASSED" : "REJECTED")}</span>
+          {isMulti
+            ? isTie
+              ? <span className="text-amber-400">DEADLOCK — TIED</span>
+              : <span className="text-green-400">Option {winnerKey} Wins</span>
+            : <span className={msg.text.includes("PASSED") ? "text-green-400" : "text-red-400"}>
+                {msg.text.includes("PASSED") ? "PASSED" : "REJECTED"}
+              </span>
+          }
         </h3>
 
         {/* Multi-option tally */}
         {isMulti && (
           <div className="mb-4 space-y-2">
+            {isTie && (
+              <div className="text-xs font-bold text-center py-1.5 px-3 rounded bg-amber-900/40 text-amber-300 border border-amber-700 mb-3">
+                DEADLOCK — Options {tiedKeys.map(k => `${k} — "${msg.options[k.charCodeAt(0) - 65]}"`).join(', ')} tied with {tally[tiedKeys[0]]} vote{tally[tiedKeys[0]] !== 1 ? 's' : ''} each
+              </div>
+            )}
             {msg.options.map((opt, i) => {
               const key = String.fromCharCode(65 + i);
               const count = tally[key] || 0;
               const pct = msg.details.length > 0 ? Math.round((count / msg.details.length) * 100) : 0;
-              const isWinner = key === winnerKey;
+              const isTiedOption = isTie && tiedKeys.includes(key);
+              const isWinner = !isTie && key === winnerKey;
               return (
                 <div key={i}>
                   <div className="flex justify-between text-[11px] mb-0.5">
-                    <span className={isWinner ? 'text-white font-bold' : 'text-gray-400'}>
+                    <span className={isWinner ? 'text-white font-bold' : isTiedOption ? 'text-amber-300 font-bold' : 'text-gray-400'}>
                       <span className="font-bold mr-1">{key}.</span>{opt}
                       {isWinner && <span className="ml-2 text-green-400 text-[9px]">✓ WINNER</span>}
+                      {isTiedOption && <span className="ml-2 text-amber-400 text-[9px]">⚖ TIED</span>}
                     </span>
-                    <span className={isWinner ? 'text-green-400 font-bold' : 'text-gray-500'}>{count} vote{count !== 1 ? 's' : ''}</span>
+                    <span className={isWinner ? 'text-green-400 font-bold' : isTiedOption ? 'text-amber-400 font-bold' : 'text-gray-500'}>{count} vote{count !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${isWinner ? 'bg-green-500' : optionColors[i % optionColors.length]}`} style={{ width: `${pct}%` }} />
+                    <div className={`h-full rounded-full transition-all ${isWinner ? 'bg-green-500' : isTiedOption ? 'bg-amber-500' : optionColors[i % optionColors.length]}`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
@@ -97,8 +114,9 @@ export default function MessageBubble({ msg, idx, onDismiss, onSpeak, isSpeaking
           {msg.details.map((vote, i) => {
             const isYes = vote.vote === 'YES';
             const isNo = vote.vote === 'NO';
+            const isTiedVote = isTie && tiedKeys.includes(vote.vote);
             const voteColor = isMulti
-              ? (vote.vote === winnerKey ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400')
+              ? (isTiedVote ? 'bg-amber-900 text-amber-300' : vote.vote === winnerKey ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400')
               : (isYes ? 'bg-green-900 text-green-300' : isNo ? 'bg-red-900 text-red-300' : 'bg-gray-700 text-gray-400');
             return (
               <div key={i} className="flex items-center justify-between text-sm">
