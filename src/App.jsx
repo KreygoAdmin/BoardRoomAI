@@ -9,6 +9,10 @@ import {
   FREE_PLAN_MEMBER_LIMIT,
   FREE_PLAN_MESSAGE_LIMIT,
   FREE_PLAN_LIBRARY_LIMIT,
+  PRO_PLAN_MEMBER_LIMIT,
+  PRO_PLAN_MESSAGE_LIMIT,
+  PRO_PLAN_LIBRARY_LIMIT,
+  PRO_PLAN_BOARDROOM_LIMIT,
   formatCST,
   MEMBER_VOICES,
   WEBHOOK_SERVER_URL,
@@ -129,6 +133,12 @@ export default function App() {
   const [userPlan, setUserPlan] = useState('free'); // Default to free (safe mode)
   const [totalTokensUsed, setTotalTokensUsed] = useState(0);
   const [messagesUsed, setMessagesUsed] = useState(0);
+
+  // Plan-derived limits (computed once per render, used throughout)
+  const planMemberLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_MEMBER_LIMIT : FREE_PLAN_MEMBER_LIMIT;
+  const planMessageLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_MESSAGE_LIMIT : FREE_PLAN_MESSAGE_LIMIT;
+  const planLibraryLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_LIBRARY_LIMIT : FREE_PLAN_LIBRARY_LIMIT;
+  const planBoardroomLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_BOARDROOM_LIMIT : 1;
 
   // User personalization
   const [preferredName, setPreferredName] = useState('');
@@ -617,8 +627,11 @@ export default function App() {
 
   // --- CREATE NEW BOARD (opens template picker) ---
   const handleCreateBoard = async () => {
-    if (userPlan === 'free') {
-      alert("Upgrade to Pioneer to create multiple boardrooms!");
+    if (boardList.length >= planBoardroomLimit) {
+      const msg = userPlan === 'free'
+        ? "Upgrade to Pro to create multiple boardrooms!"
+        : "Upgrade to Pioneer for unlimited boardrooms!";
+      alert(msg);
       return;
     }
     const timeStr = formatCST();
@@ -804,12 +817,11 @@ export default function App() {
     }
 
     // --- Message Limit Check ---
-    if (userPlan === 'free' && messagesUsed >= FREE_PLAN_MESSAGE_LIMIT) {
-        setMessages(prev => [...prev, {
-            role: 'system',
-            text: "🔒 FREE PLAN LIMIT REACHED (30 Messages). Upgrade to Pioneer to continue.",
-            type: 'error'
-        }]);
+    if (userPlan !== 'pioneer' && messagesUsed >= planMessageLimit) {
+        const upgradeMsg = userPlan === 'pro'
+          ? `🔒 PRO PLAN LIMIT REACHED (${PRO_PLAN_MESSAGE_LIMIT} Messages). Upgrade to Pioneer for unlimited messages.`
+          : `🔒 FREE PLAN LIMIT REACHED (${FREE_PLAN_MESSAGE_LIMIT} Messages). Upgrade to Pro or Pioneer to continue.`;
+        setMessages(prev => [...prev, { role: 'system', text: upgradeMsg, type: 'error' }]);
         setUserInput("");
         return;
     }
@@ -1054,8 +1066,11 @@ export default function App() {
   
   const handleCreateMember = () => {
     // --- Limit Check ---
-    if (userPlan === 'free' && boardMembers.length >= FREE_PLAN_MEMBER_LIMIT) {
-        alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
+    if (userPlan !== 'pioneer' && boardMembers.length >= planMemberLimit) {
+        const upgradeMsg = userPlan === 'pro'
+          ? `Pro Plan limit reached (${PRO_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pioneer for unlimited agents!`
+          : `Free Plan limit reached (${FREE_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pro or Pioneer for more agents!`;
+        alert(upgradeMsg);
         return;
     }
 
@@ -1102,8 +1117,11 @@ export default function App() {
       setAddedSuggestionIds(prev => new Set([...prev, suggestion.id]));
       return;
     }
-    if (userPlan === 'free' && boardMembers.length >= FREE_PLAN_MEMBER_LIMIT) {
-      alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
+    if (userPlan !== 'pioneer' && boardMembers.length >= planMemberLimit) {
+      const upgradeMsg = userPlan === 'pro'
+        ? `Pro Plan limit reached (${PRO_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pioneer for unlimited agents!`
+        : `Free Plan limit reached (${FREE_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pro or Pioneer for more agents!`;
+      alert(upgradeMsg);
       return;
     }
     const roleConflict = boardMembers.some(m => m.role.toLowerCase() === suggestion.role.toLowerCase());
@@ -1223,8 +1241,11 @@ export default function App() {
   // --- Async Download & Count ---
   const handleDownloadAgent = async (agent) => {
     // --- Limit Check ---
-    if (userPlan === 'free' && boardMembers.length >= FREE_PLAN_MEMBER_LIMIT) {
-        alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
+    if (userPlan !== 'pioneer' && boardMembers.length >= planMemberLimit) {
+        const upgradeMsg = userPlan === 'pro'
+          ? `Pro Plan limit reached (${PRO_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pioneer for unlimited agents!`
+          : `Free Plan limit reached (${FREE_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pro or Pioneer for more agents!`;
+        alert(upgradeMsg);
         return;
     }
 
@@ -1273,13 +1294,16 @@ export default function App() {
   const handleSaveToLibrary = async (member) => {
     if (!member || !session) return;
 
-    if (userPlan === 'free') {
+    if (userPlan !== 'pioneer') {
       const { count } = await supabase
         .from('saved_agents')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', session.user.id);
-      if (count >= FREE_PLAN_LIBRARY_LIMIT) {
-        alert(`Free Plan limit reached (${FREE_PLAN_LIBRARY_LIMIT} saved agents).\n\nUpgrade to Pioneer for unlimited library storage!`);
+      if (count >= planLibraryLimit) {
+        const upgradeMsg = userPlan === 'pro'
+          ? `Pro Plan limit reached (${PRO_PLAN_LIBRARY_LIMIT} saved agents).\n\nUpgrade to Pioneer for unlimited library storage!`
+          : `Free Plan limit reached (${FREE_PLAN_LIBRARY_LIMIT} saved agents).\n\nUpgrade to Pro or Pioneer for more library storage!`;
+        alert(upgradeMsg);
         return;
       }
     }
@@ -1306,8 +1330,11 @@ export default function App() {
   };
 
   const handleLoadFromLibrary = (agent) => {
-    if (userPlan === 'free' && boardMembers.length >= FREE_PLAN_MEMBER_LIMIT) {
-      alert("Free Plan limit reached (3 Members).\n\nUpgrade to Pioneer for unlimited agents!");
+    if (userPlan !== 'pioneer' && boardMembers.length >= planMemberLimit) {
+      const upgradeMsg = userPlan === 'pro'
+        ? `Pro Plan limit reached (${PRO_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pioneer for unlimited agents!`
+        : `Free Plan limit reached (${FREE_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pro or Pioneer for more agents!`;
+      alert(upgradeMsg);
       return;
     }
 
@@ -1439,6 +1466,7 @@ export default function App() {
         boardMembers={boardMembers} setShowMemberConfig={setShowMemberConfig}
         setShowLibrary={setShowLibrary}
         userPlan={userPlan} messagesUsed={messagesUsed} totalTokensUsed={totalTokensUsed} session={session}
+        planMessageLimit={planMessageLimit} planBoardroomLimit={planBoardroomLimit}
         onReplayTutorial={startTutorial}
       />
 

@@ -2,6 +2,10 @@
 export const FREE_PLAN_MEMBER_LIMIT = 3;
 export const FREE_PLAN_MESSAGE_LIMIT = 30;
 export const FREE_PLAN_LIBRARY_LIMIT = 5;
+export const PRO_PLAN_MEMBER_LIMIT = 10;
+export const PRO_PLAN_MESSAGE_LIMIT = 500;
+export const PRO_PLAN_LIBRARY_LIMIT = 25;
+export const PRO_PLAN_BOARDROOM_LIMIT = 5;
 export const AUTO_MODE_TURN_LIMIT = 20;
 
 // --- API Retry Config ---
@@ -10,7 +14,8 @@ export const BASE_DELAY = 2000;
 export const AUTO_LOOP_DELAY = 800;
 
 // --- External URLs ---
-export const STRIPE_BASE_URL = "https://buy.stripe.com/cNi4gybECaEi17N0or0Jq00";
+export const STRIPE_BASE_URL = "https://buy.stripe.com/cNi4gybECaEi17N0or0Jq00"; // Pioneer
+export const STRIPE_PRO_URL = "https://buy.stripe.com/8x27sK0ZY3bQ9Ejefh0Jq02"; // Pro
 export const WEBHOOK_SERVER_URL = "https://api.kreygo.com";
 
 // --- Default Values ---

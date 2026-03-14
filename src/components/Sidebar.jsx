@@ -4,8 +4,9 @@ import {
   FileText, Edit, BrainCircuit, ClipboardList, ChevronRight,
   Sparkles, MessageSquare, Zap, LogOut, BookMarked, Info, GraduationCap,
 } from 'lucide-react';
-import { MEMBER_MODELS, ROLE_DEFINITIONS, STRIPE_BASE_URL, WEBHOOK_SERVER_URL } from '../lib/constants.js';
+import { MEMBER_MODELS, ROLE_DEFINITIONS, STRIPE_BASE_URL, STRIPE_PRO_URL, WEBHOOK_SERVER_URL } from '../lib/constants.js';
 import { supabase } from '../supabaseClient';
+import PricingModal from './modals/PricingModal.jsx';
 
 export default function Sidebar({
   onReplayTutorial,
@@ -22,9 +23,12 @@ export default function Sidebar({
   alignmentCollapsed, setAlignmentCollapsed,
   boardMembers, setShowMemberConfig, setShowLibrary,
   userPlan, messagesUsed, totalTokensUsed, session,
+  planMessageLimit, planBoardroomLimit,
 }) {
   const [tooltipRole, setTooltipRole] = useState(null);
+  const [showPricing, setShowPricing] = useState(false);
   return (
+  <>
   <div className={`fixed inset-y-0 left-0 z-30 w-80 bg-gray-900/95 backdrop-blur shadow-2xl border-r border-gray-800 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
     <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center gap-2 justify-between">
       <div className="flex items-center gap-2">
@@ -66,15 +70,20 @@ export default function Sidebar({
     {/* Board Switcher Dropdown */}
     {showBoardSwitcher && (
       <div className="border-b border-gray-700 bg-gray-900 p-3 space-y-2">
-        {userPlan === 'pioneer' && (
+        {(userPlan === 'pioneer' || userPlan === 'pro') && boardList.length < planBoardroomLimit && (
           <button onClick={handleCreateBoard} className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-600/50 rounded text-xs transition-colors">
             <Plus size={14} /> New Boardroom
           </button>
         )}
+        {(userPlan === 'pioneer' || userPlan === 'pro') && boardList.length >= planBoardroomLimit && (
+          <button onClick={handleCreateBoard} className="w-full flex items-center justify-center gap-2 py-2 bg-gray-800 text-gray-500 border border-gray-700 rounded text-xs cursor-not-allowed">
+            <Plus size={14} /> New Boardroom <span className="text-[9px] bg-yellow-600/30 text-yellow-400 px-1 rounded">PIONEER</span>
+          </button>
+        )}
         {userPlan === 'free' && (
           <div className="space-y-1.5">
-            <button onClick={() => alert("Upgrade to Pioneer to create multiple boardrooms!")} className="w-full flex items-center justify-center gap-2 py-2 bg-gray-800 text-gray-500 border border-gray-700 rounded text-xs cursor-not-allowed">
-              <Plus size={14} /> New Boardroom <span className="text-[9px] bg-yellow-600/30 text-yellow-400 px-1 rounded">PIONEER</span>
+            <button onClick={() => alert("Upgrade to Pro to create multiple boardrooms!")} className="w-full flex items-center justify-center gap-2 py-2 bg-gray-800 text-gray-500 border border-gray-700 rounded text-xs cursor-not-allowed">
+              <Plus size={14} /> New Boardroom <span className="text-[9px] bg-indigo-600/30 text-indigo-400 px-1 rounded">PRO</span>
             </button>
             <button onClick={handleStartFresh} className="w-full flex items-center justify-center gap-2 py-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/50 rounded text-xs transition-colors">
               <Trash2 size={13} /> Delete & Start Fresh
@@ -261,24 +270,27 @@ export default function Sidebar({
     <div className="p-4 border-t border-gray-800 bg-gray-900 mt-auto">
         {/* --- Plan Status --- */}
         <div className="mb-4">
-            {userPlan === 'free' ? (
-                <button 
-                    onClick={() => window.location.href = `${STRIPE_BASE_URL}?client_reference_id=${session.user.id}`}
+            {userPlan === 'free' && (
+                <button
+                    onClick={() => setShowPricing(true)}
                     className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded text-xs shadow-lg transform transition-transform hover:scale-105 flex items-center justify-center gap-2"
                 >
-                    <Sparkles size={14} fill="white" /> UPGRADE TO PIONEER
+                    <Sparkles size={14} fill="white" /> UPGRADE YOUR PLAN
                 </button>
-            ) : (
+            )}
+            {userPlan === 'pro' && (
+                <div className="space-y-1.5">
+                    <button
+                        onClick={() => setShowPricing(true)}
+                        className="w-full py-1.5 bg-gray-800 border border-indigo-600/30 text-indigo-400 font-bold rounded text-xs flex items-center justify-center gap-2 hover:border-indigo-500/60 transition-colors"
+                    >
+                        <Sparkles size={13} /> PRO MEMBER
+                    </button>
+                </div>
+            )}
+            {userPlan === 'pioneer' && (
                 <button
-                    onClick={async () => {
-                        const res = await fetch(`${WEBHOOK_SERVER_URL}/create-portal-session`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email: session.user.email }),
-                        });
-                        const { url } = await res.json();
-                        window.location.href = url;
-                    }}
+                    onClick={() => setShowPricing(true)}
                     className="w-full py-2 bg-gray-800 border border-yellow-600/30 text-yellow-500 font-bold rounded text-xs flex items-center justify-center gap-2 hover:border-yellow-500/60 hover:text-yellow-400 transition-colors"
                 >
                     <Sparkles size={14} /> PIONEER MEMBER
@@ -291,12 +303,15 @@ export default function Sidebar({
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border flex-1 justify-center ${
             userPlan === 'pioneer'
               ? 'bg-yellow-900/20 text-yellow-500 border-yellow-900/50'
-              : messagesUsed >= 25
+              : messagesUsed >= planMessageLimit * 0.85
                 ? 'bg-red-900/30 text-red-400 border-red-900'
                 : 'bg-zinc-800 text-zinc-400 border-zinc-700'
           }`}>
             <MessageSquare size={10} />
-            {userPlan === 'pioneer' ? <span>Unlimited</span> : <span>{messagesUsed} / 30</span>}
+            {userPlan === 'pioneer'
+              ? <span>Unlimited</span>
+              : <span>{messagesUsed} / {planMessageLimit}</span>
+            }
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border bg-zinc-800 text-zinc-400 border-zinc-700 flex-1 justify-center">
             <Zap size={10} />
@@ -328,5 +343,14 @@ export default function Sidebar({
         </div>
     </div>
   </div>
+
+  {showPricing && (
+    <PricingModal
+      onClose={() => setShowPricing(false)}
+      userPlan={userPlan}
+      session={session}
+    />
+  )}
+  </>
   );
 }
