@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, X, BrainCircuit, Loader2, ChevronRight, Plus, Pencil, Check } from 'lucide-react';
+import { Sparkles, X, BrainCircuit, Loader2, ChevronRight, Plus, Pencil, Check, Trash2 } from 'lucide-react';
 import { BOARD_TEMPLATES, formatCST } from '../../lib/constants.js';
 import AIBuilderMessage from '../AIBuilderMessage.jsx';
 
@@ -211,9 +211,20 @@ export default function TemplateModal({
 
             {/* Current Members list */}
             <div className="flex-1">
-              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-2">
-                Board Members <span className="text-gray-600 font-normal normal-case">({pendingMembers.length})</span>
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  Board Members <span className="text-gray-600 font-normal normal-case">({pendingMembers.length})</span>
+                </label>
+                {pendingMembers.length > 0 && (
+                  <button
+                    onClick={() => { setPendingMembers([]); closeForm(); }}
+                    className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-400 font-bold transition-colors"
+                    title="Remove all members"
+                  >
+                    <Trash2 size={10} /> Clear Board
+                  </button>
+                )}
+              </div>
               <div className="space-y-1.5">
                 {pendingMembers.map(m => (
                   <div key={m.id} className={`flex items-center gap-2 bg-gray-800 border rounded px-2 py-1.5 group cursor-pointer transition-colors ${customForm.editingId === m.id ? 'border-indigo-500' : 'border-gray-700 hover:border-gray-500'}`}
@@ -230,7 +241,7 @@ export default function TemplateModal({
                       onClick={(e) => { e.stopPropagation(); setPendingMembers(prev => prev.filter(p => p.id !== m.id)); if (customForm.editingId === m.id) closeForm(); }}
                       className="text-gray-700 hover:text-red-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
                     >
-                      <X size={12} />
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 ))}

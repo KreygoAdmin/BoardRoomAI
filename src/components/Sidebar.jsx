@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Users, RotateCcw, CloudUpload, X, ListOrdered, Plus, Trash2,
   FileText, Edit, BrainCircuit, ClipboardList, ChevronRight,
-  Sparkles, MessageSquare, Zap, LogOut
+  Sparkles, MessageSquare, Zap, LogOut, BookMarked, Info, GraduationCap,
 } from 'lucide-react';
-import { MEMBER_MODELS, STRIPE_BASE_URL, WEBHOOK_SERVER_URL } from '../lib/constants.js';
+import { MEMBER_MODELS, ROLE_DEFINITIONS, STRIPE_BASE_URL, WEBHOOK_SERVER_URL } from '../lib/constants.js';
 import { supabase } from '../supabaseClient';
 
 export default function Sidebar({
+  onReplayTutorial,
   isSidebarOpen, setIsSidebarOpen,
   handleResetBoard, isProcessing,
   handleSaveBoard, saveStatus,
@@ -19,9 +20,10 @@ export default function Sidebar({
   showSettings, setShowSettings, whiteboardSnapshot,
   minutesCollapsed, setMinutesCollapsed, minutes,
   alignmentCollapsed, setAlignmentCollapsed,
-  boardMembers, setShowMemberConfig,
+  boardMembers, setShowMemberConfig, setShowLibrary,
   userPlan, messagesUsed, totalTokensUsed, session,
 }) {
+  const [tooltipRole, setTooltipRole] = useState(null);
   return (
   <div className={`fixed inset-y-0 left-0 z-30 w-80 bg-gray-900/95 backdrop-blur shadow-2xl border-r border-gray-800 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
     <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center gap-2 justify-between">
@@ -117,7 +119,7 @@ export default function Sidebar({
     <div className="flex-1 overflow-y-auto">
       {/* --- Whiteboard (collapsible) --- */}
       <div className="border-b border-gray-800">
-        <button onClick={() => setWhiteboardCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
+        <button id="tutorial-whiteboard" onClick={() => setWhiteboardCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
           <h2 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><FileText size={12} /> The Whiteboard</h2>
           <div className="flex items-center gap-2">
             {showSettings ? (
@@ -171,7 +173,7 @@ export default function Sidebar({
 
       {/* --- Secretary's Minutes (collapsible) --- */}
       <div className="border-b border-gray-800">
-        <button onClick={() => setMinutesCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
+        <button id="tutorial-minutes" onClick={() => setMinutesCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
           <h2 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2"><BrainCircuit size={12} /> Secretary's Minutes</h2>
           <ChevronRight size={14} className={`text-gray-500 transition-transform duration-200 ${minutesCollapsed ? '' : 'rotate-90'}`} />
         </button>
@@ -210,18 +212,33 @@ export default function Sidebar({
         <button id="tutorial-board-members" onClick={() => setAlignmentCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
           <h2 className="text-xs font-bold text-gray-400 uppercase">Board Members</h2>
           <div className="flex items-center gap-2">
-            <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); }} className="text-gray-500 hover:text-white transition-colors"><Edit size={12} /></button>
+            <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); setShowLibrary(true); }} className="text-gray-500 hover:text-amber-400 transition-colors" title="My Library"><BookMarked size={12} /></button>
+            <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); }} className="text-gray-500 hover:text-white transition-colors" title="Edit Members"><Edit size={12} /></button>
             <ChevronRight size={14} className={`text-gray-500 transition-transform duration-200 ${alignmentCollapsed ? '' : 'rotate-90'}`} />
           </div>
         </button>
         {!alignmentCollapsed && (
           <div className="px-4 pb-3 space-y-2">
+            {tooltipRole && ROLE_DEFINITIONS[tooltipRole] && (
+              <div className="mb-2 p-2 bg-gray-800 border border-indigo-900 rounded text-[10px] text-gray-300 leading-relaxed">
+                <span className="font-bold text-indigo-400">{tooltipRole}: </span>{ROLE_DEFINITIONS[tooltipRole]}
+              </div>
+            )}
             {boardMembers.map(m => (
               <div key={m.id} className="flex items-center gap-2 p-1.5 hover:bg-gray-800 rounded transition-colors">
                 <div className={`w-4 h-4 rounded-full ${m.avatar} flex items-center justify-center text-[7px] font-bold text-white flex-shrink-0`}>{m.name[0]}</div>
                 <div className="flex-1">
                   <div className="flex justify-between text-[10px] mb-0.5">
-                    <span className="text-white font-medium">{m.role} <span className="text-gray-500">({m.name})</span></span>
+                    <span className="text-white font-medium flex items-center gap-1">
+                      {m.role} <span className="text-gray-500">({m.name})</span>
+                      {ROLE_DEFINITIONS[m.role] && (
+                        <button
+                          onClick={() => setTooltipRole(prev => prev === m.role ? null : m.role)}
+                          className="text-gray-600 hover:text-indigo-400 transition-colors"
+                          title={`What is a ${m.role}?`}
+                        ><Info size={9} /></button>
+                      )}
+                    </span>
                     <span className={m.stats.agreement > 50 ? "text-green-400" : "text-red-400"}>{m.stats.agreement}%</span>
                   </div>
                   <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
@@ -290,13 +307,24 @@ export default function Sidebar({
             <div className="text-xs text-gray-400 truncate max-w-[150px]">
                 {session?.user?.email}
             </div>
-            <button
-                onClick={() => supabase.auth.signOut()}
-                className="text-gray-500 hover:text-red-400 transition-colors"
-                title="Sign Out"
-            >
-                <LogOut size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+                {onReplayTutorial && (
+                    <button
+                        onClick={onReplayTutorial}
+                        className="text-gray-500 hover:text-indigo-400 transition-colors"
+                        title="Replay tutorial"
+                    >
+                        <GraduationCap size={16} />
+                    </button>
+                )}
+                <button
+                    onClick={() => supabase.auth.signOut()}
+                    className="text-gray-500 hover:text-red-400 transition-colors"
+                    title="Sign Out"
+                >
+                    <LogOut size={16} />
+                </button>
+            </div>
         </div>
     </div>
   </div>

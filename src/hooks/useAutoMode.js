@@ -9,6 +9,7 @@ export function useAutoMode() {
   const autoModeRef = useRef(false);
   const autoTurnCountRef = useRef(0);
   const lastAutoSpeakerRef = useRef(null);
+  const autoLoopRunningRef = useRef(false); // mutex: prevents concurrent loop instances
 
   const runAutoLoop = async ({
     messages, minutes, boardMembers, whiteboardFacts,
@@ -16,9 +17,13 @@ export function useAutoMode() {
     runOrchestratorAgent, runBoardMemberAgent, runAlignmentAgent, runResearchAgent,
     openVoteModal,
     setMessages, setMinutes, setIsProcessing, setProcessingStage, setRetryStatus,
+    headphonesMode, waitForSilence,
   }) => {
     if (!autoModeRef.current || messages.length === 0) return;
+    if (autoLoopRunningRef.current) return; // already running, don't stack
+    autoLoopRunningRef.current = true;
 
+    try {
     // Free plan limit
     if (userPlan === 'free' && messagesUsed >= FREE_PLAN_MESSAGE_LIMIT) {
       setAutoMode(false);
@@ -39,8 +44,17 @@ export function useAutoMode() {
       return;
     }
 
-    // Delay so user can read the last message
-    await sleep(AUTO_LOOP_DELAY);
+    // In headphones mode: wait for the spoken message to finish, then a small buffer.
+    // The initial sleep(150) lets React finish running the headphones useEffect (which
+    // calls speakText) before we check for silence — otherwise waitForSilence sees an
+    // empty queue and resolves immediately, racing ahead of the audio.
+    if (headphonesMode && waitForSilence) {
+      await sleep(150); // yield so speakText gets queued before checking silence
+      await waitForSilence();
+      await sleep(800); // brief pause between speakers
+    } else {
+      await sleep(AUTO_LOOP_DELAY);
+    }
     if (!autoModeRef.current) return;
 
     setIsProcessing(true);
@@ -121,9 +135,11 @@ export function useAutoMode() {
       const agentMsg = {
         role: 'assistant',
         sender: chosenMember.name,
+        senderRole: chosenMember.role,
         text: agentResponse,
         type: 'chat',
-        avatar: chosenMember.avatar
+        avatar: chosenMember.avatar,
+        voice_id: chosenMember.voice_id || ""
       };
       setMessages(prev => [...prev, agentMsg]);
 
@@ -142,11 +158,18 @@ export function useAutoMode() {
       setAutoMode(false);
       autoModeRef.current = false;
     } finally {
+      autoLoopRunningRef.current = false;
       setIsProcessing(false);
       setProcessingStage("");
       setRetryStatus(null);
     }
+
+    } finally {
+      // Outer finally: ensures mutex is always released, even on early returns
+      // (inner finally handles the normal run path above)
+      autoLoopRunningRef.current = false;
+    }
   };
 
-  return { autoMode, setAutoMode, autoModeRef, autoTurnCountRef, lastAutoSpeakerRef, runAutoLoop };
+  return { autoMode, setAutoMode, autoModeRef, autoTurnCountRef, lastAutoSpeakerRef, autoLoopRunningRef, runAutoLoop };
 }

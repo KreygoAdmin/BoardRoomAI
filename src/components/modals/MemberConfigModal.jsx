@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Users, Globe, BookMarked, BrainCircuit, X,
   Sparkles, Loader2, ChevronRight, Search,
-  Plus, Trash2, Save,
+  Plus, Trash2, Save, Volume2,
 } from 'lucide-react';
-import { MEMBER_MODELS } from '../../lib/constants.js';
+import { MEMBER_MODELS, MEMBER_VOICES, WEBHOOK_SERVER_URL } from '../../lib/constants.js';
 import AIBuilderMessage from '../AIBuilderMessage.jsx';
 
 export default function MemberConfigModal({
@@ -39,6 +39,7 @@ export default function MemberConfigModal({
   handleDeleteMember, handleSaveMember,
   handleSaveToLibrary, handlePublishMember,
   setBoardMembers,
+  userId,
 }) {
   const closeAll = () => {
     setShowMemberConfig(false);
@@ -337,6 +338,7 @@ export default function MemberConfigModal({
                       ))}
                     </select>
                   </div>
+                  <VoiceSelector editingMember={editingMember} setEditingMember={setEditingMember} userId={userId} />
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase block mb-1">System Instructions</label>
                     <textarea className="w-full h-40 bg-gray-800 border border-gray-700 rounded p-3 text-sm text-gray-300 focus:border-indigo-500 outline-none leading-relaxed" value={editingMember.description} onChange={(e) => setEditingMember({...editingMember, description: e.target.value})} />
@@ -359,6 +361,68 @@ export default function MemberConfigModal({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function VoiceSelector({ editingMember, setEditingMember, userId }) {
+  const [isSampling, setIsSampling] = useState(false);
+  const [sampleError, setSampleError] = useState('');
+
+  const handlePlaySample = async () => {
+    const text = `Hello, I'm ${editingMember.name}, the ${editingMember.role}.`;
+    const voiceId = editingMember.voice_id;
+    setSampleError('');
+    if (!voiceId) { setSampleError('Select a voice first.'); return; }
+    if (!userId) { setSampleError('Not logged in.'); return; }
+    setIsSampling(true);
+    try {
+      const res = await fetch(`${WEBHOOK_SERVER_URL}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, voice_id: voiceId, text }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => { URL.revokeObjectURL(url); setIsSampling(false); };
+        audio.onerror = () => { setIsSampling(false); setSampleError('Playback failed.'); };
+        audio.play();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setSampleError(body.detail || `Server error ${res.status}`);
+        setIsSampling(false);
+      }
+    } catch (e) {
+      setSampleError('Network error — is the server running?');
+      setIsSampling(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-bold text-gray-500 uppercase block mb-1">ElevenLabs Voice</label>
+      <div className="flex gap-2">
+        <select
+          value={editingMember.voice_id || ""}
+          onChange={(e) => { setEditingMember({ ...editingMember, voice_id: e.target.value }); setSampleError(''); }}
+          className="flex-1 bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white focus:border-indigo-500 outline-none"
+        >
+          {MEMBER_VOICES.map(v => (
+            <option key={v.id} value={v.id}>{v.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={handlePlaySample}
+          disabled={isSampling}
+          className="flex items-center gap-1.5 px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-300 rounded text-xs transition-colors"
+          title="Play sample"
+        >
+          <Volume2 size={14} /> {isSampling ? '...' : 'Sample'}
+        </button>
+      </div>
+      {sampleError && <p className="mt-1 text-[10px] text-red-400">{sampleError}</p>}
     </div>
   );
 }

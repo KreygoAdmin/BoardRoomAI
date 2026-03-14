@@ -1,7 +1,7 @@
 import React from 'react';
-import { Vote, X, Plus } from 'lucide-react';
+import { Vote, X, Plus, Sparkles, Loader2 } from 'lucide-react';
 
-export default function VoteModal({ pendingVote, setPendingVote, runVote }) {
+export default function VoteModal({ pendingVote, setPendingVote, runVote, onAISuggest, isLoadingAI = false }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg flex flex-col">
@@ -48,7 +48,18 @@ export default function VoteModal({ pendingVote, setPendingVote, runVote }) {
           {/* Options (multi-option mode) */}
           {pendingVote.options.length >= 2 && (
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-2">Options</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase">Options</label>
+                <button
+                  onClick={() => onAISuggest(pendingVote.proposal)}
+                  disabled={isLoadingAI || !pendingVote.proposal.trim()}
+                  className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors"
+                  title="Let AI suggest options based on the discussion"
+                >
+                  {isLoadingAI ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                  AI Suggest
+                </button>
+              </div>
               <div className="space-y-2">
                 {pendingVote.options.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">

@@ -10,6 +10,9 @@ import {
   FREE_PLAN_MESSAGE_LIMIT,
   FREE_PLAN_LIBRARY_LIMIT,
   formatCST,
+  MEMBER_VOICES,
+  WEBHOOK_SERVER_URL,
+  getVoiceForName,
 } from './lib/constants.js';
 import {
   callGemini as callGeminiApi,
@@ -95,7 +98,6 @@ export default function App() {
         console.log("User Plan Loaded:", data.plan);
         setUserPlan(data.plan);
         setTotalTokensUsed(data.total_tokens || 0);
-
         // Monthly reset check
         const anchor = new Date(data.billing_cycle_anchor);
         const now = new Date();
@@ -123,6 +125,20 @@ export default function App() {
   const [userPlan, setUserPlan] = useState('free'); // Default to free (safe mode)
   const [totalTokensUsed, setTotalTokensUsed] = useState(0);
   const [messagesUsed, setMessagesUsed] = useState(0);
+
+  // User personalization
+  const [preferredName, setPreferredName] = useState('');
+
+  // Session settings
+  const [briefMode, setBriefMode] = useState(false);
+  const [headphonesMode, setHeadphonesMode] = useState(true);
+
+  // Audio queue for sequential playback
+  const audioQueueRef = useRef([]);
+  const isPlayingAudioRef = useRef(false);
+  const currentAudioRef = useRef(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [speakingMsgIndex, setSpeakingMsgIndex] = useState(null);
 
   // Persistence State
   const [boardId, setBoardId] = useState(null);
@@ -152,7 +168,8 @@ export default function App() {
   const [speakerPickState, setSpeakerPickState] = useState(null);
 
   // Auto-Conversation Mode
-  const { autoMode, setAutoMode, autoModeRef, autoTurnCountRef, lastAutoSpeakerRef, runAutoLoop } = useAutoMode();
+  const { autoMode, setAutoMode, autoModeRef, autoTurnCountRef, lastAutoSpeakerRef, autoLoopRunningRef, runAutoLoop } = useAutoMode();
+  const resumeAutoAfterUserTurn = useRef(false);
 
   // --- Marketplace State ---
   const [showMarketplace, setShowMarketplace] = useState(false);
@@ -189,6 +206,7 @@ export default function App() {
   const [reportData, setReportData] = useState(null);
   const [pendingVote, setPendingVote] = useState(null);
   // pendingVote shape: { proposal: string, options: string[], clarification: string }
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
   const [minutesCollapsed, setMinutesCollapsed] = useState(true);
   // Template Modal State
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -262,6 +280,9 @@ export default function App() {
         if (data.settings?.minutes) {
             setMinutes(data.settings.minutes);
         }
+        if (data.settings?.briefMode !== undefined) {
+            setBriefMode(data.settings.briefMode);
+        }
       } else {
         // No boards exist — first-time user. Open template modal with welcome flow.
         const timeStr = formatCST();
@@ -328,6 +349,7 @@ export default function App() {
       runOrchestratorAgent, runBoardMemberAgent, runAlignmentAgent, runResearchAgent,
       openVoteModal,
       setMessages, setMinutes, setIsProcessing, setProcessingStage, setRetryStatus,
+      headphonesMode, waitForSilence,
     });
   }, [autoMode, messages, isProcessing]);
 
@@ -341,7 +363,7 @@ export default function App() {
       whiteboard: whiteboardFacts,
       members: boardMembers,
       messages: messages,
-      settings: { autoResearch: autoResearch, minutes: minutes }
+      settings: { autoResearch: autoResearch, minutes: minutes, briefMode: briefMode }
     };
     try {
       if (boardId) {
@@ -378,6 +400,118 @@ export default function App() {
     return () => clearTimeout(autoSaveTimerRef.current);
   }, [boardName, boardMembers, whiteboardFacts]);
 
+  // --- AUTO-SAVE on 15-second interval (safety net) ---
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => { autoSave(); }, 15000);
+    return () => clearInterval(interval);
+  }, [autoSave]);
+
+  // --- Audio Queue (server-proxied ElevenLabs, or Web Speech fallback) ---
+  // Processes items one at a time so messages are never cut off.
+  const processAudioQueue = async () => {
+    if (isPlayingAudioRef.current || audioQueueRef.current.length === 0) return;
+    isPlayingAudioRef.current = true;
+    setIsPlayingAudio(true);
+    const { text, voiceId, userId, msgIndex = null } = audioQueueRef.current.shift();
+    setSpeakingMsgIndex(msgIndex);
+    try {
+      let spokenviaElevenLabs = false;
+      if (voiceId && userId) {
+        // Server-proxied ElevenLabs (key lives on server, usage tracked per user)
+        try {
+          const res = await fetch(`${WEBHOOK_SERVER_URL}/tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, voice_id: voiceId, text }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.warn('ElevenLabs proxy non-ok response:', res.status, err.detail || err);
+          } else if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.playbackRate = 1.15;
+            currentAudioRef.current = audio;
+            await new Promise(resolve => {
+              audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+              audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+              audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+            });
+            currentAudioRef.current = null;
+            spokenviaElevenLabs = true;
+          }
+        } catch (e) { console.warn('ElevenLabs TTS error, falling back to web speech:', e); }
+      }
+      if (!spokenviaElevenLabs) {
+        // Web Speech fallback (no voice assigned, not logged in, or ElevenLabs failed)
+        await new Promise(resolve => {
+          if (!('speechSynthesis' in window)) { resolve(); return; }
+          const utt = new SpeechSynthesisUtterance(text);
+          utt.rate = 1.15;
+          utt.onend = resolve;
+          utt.onerror = resolve;
+          window.speechSynthesis.speak(utt);
+        });
+      }
+    } catch (e) { console.warn('Audio error:', e); }
+    isPlayingAudioRef.current = false;
+    if (audioQueueRef.current.length === 0) { setIsPlayingAudio(false); setSpeakingMsgIndex(null); }
+    processAudioQueue(); // next item
+  };
+
+  const speakText = (text, voiceId = "", msgIndex = null) => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    audioQueueRef.current.push({ text, voiceId, userId: session?.user?.id, msgIndex });
+    processAudioQueue();
+  };
+
+  const stopAudio = () => {
+    audioQueueRef.current = [];
+    if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    isPlayingAudioRef.current = false;
+    setIsPlayingAudio(false);
+    setSpeakingMsgIndex(null);
+  };
+
+  // Resolves when the audio queue is empty and nothing is playing
+  const waitForSilence = () => new Promise(resolve => {
+    const check = () => {
+      if (!isPlayingAudioRef.current && audioQueueRef.current.length === 0) resolve();
+      else setTimeout(check, 150);
+    };
+    check();
+  });
+
+  // Headphones mode: auto-speak new assistant messages (must be before gatekeeper)
+  const prevMessageCountRef = useRef(0);
+  useEffect(() => {
+    if (!headphonesMode) return;
+    if (messages.length <= prevMessageCountRef.current) {
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
+    prevMessageCountRef.current = messages.length;
+    const last = messages[messages.length - 1];
+    if (last?.role === 'assistant' && last?.text) {
+      speakText(last.text, last.voice_id || "", messages.length - 1);
+    }
+  }, [messages, headphonesMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- HEADPHONES + AUTO MODE TIP ---
+  // Show a one-time UI-only hint the first time both modes are on together.
+  // Uses a separate state (never injected into messages) so AI members can't see it.
+  const headphonesAutoTipShownRef = useRef(false);
+  const [headphonesTip, setHeadphonesTip] = useState(false);
+  useEffect(() => {
+    if (headphonesMode && autoMode && !headphonesAutoTipShownRef.current && messages.length > 0) {
+      headphonesAutoTipShownRef.current = true;
+      setHeadphonesTip(true);
+    }
+  }, [headphonesMode, autoMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // --- GATEKEEPER (Safe Return) ---
   if (!session) {
     return <Auth />;
@@ -410,7 +544,7 @@ export default function App() {
       whiteboard: whiteboardFacts,
       members: boardMembers,
       messages: messages,
-      settings: {}
+      settings: { autoResearch, minutes, briefMode }
     };
 
     try {
@@ -649,13 +783,20 @@ export default function App() {
     runResearchAgent,
     runAlignmentAgent,
     runAIBuilderAgent,
-  } = useAgents({ callGemini, callGeminiWithSearch, callOpenRouter, setBoardMembers });
+  } = useAgents({ callGemini, callGeminiWithSearch, callOpenRouter, setBoardMembers, userName: preferredName, briefMode });
 
   // --- Logic Functions ---
 
   // --- Manual Trigger ---
   const handleUserTurn = async () => {
     if (!userInput.trim()) return;
+
+    // If autoMode is running, pause it and resume after user turn completes
+    if (autoModeRef.current) {
+      autoModeRef.current = false;
+      setAutoMode(false);
+      resumeAutoAfterUserTurn.current = true;
+    }
 
     // --- Message Limit Check ---
     if (userPlan === 'free' && messagesUsed >= FREE_PLAN_MESSAGE_LIMIT) {
@@ -714,14 +855,6 @@ export default function App() {
     }
   };
 
-  const speakText = (text) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      window.speechSynthesis.speak(utterance);
-    }
-  };
-
   // --- Manually surface the speaker picker (e.g. when resuming a session) ---
   const handleContinue = async () => {
     if (isProcessing || messages.length === 0 || speakerPickState) return;
@@ -771,9 +904,11 @@ export default function App() {
       const agentMsg = {
         role: 'assistant',
         sender: chosenMember.name,
+        senderRole: chosenMember.role,
         text: agentResponse,
         type: 'chat',
-        avatar: chosenMember.avatar
+        avatar: chosenMember.avatar,
+        voice_id: chosenMember.voice_id || ""
       };
       setMessages(prev => [...prev, agentMsg]);
 
@@ -787,6 +922,11 @@ export default function App() {
       setIsProcessing(false);
       setProcessingStage("");
       setRetryStatus(null);
+      if (resumeAutoAfterUserTurn.current) {
+        resumeAutoAfterUserTurn.current = false;
+        autoModeRef.current = true;
+        setAutoMode(true);
+      }
     }
   };
 
@@ -805,6 +945,29 @@ export default function App() {
     setPendingVote({ proposal: proposal || "", options: [], clarification: "" });
   };
 
+  // Step 1.5: AI-suggests multi-option vote choices from conversation context
+  const handleAISuggestOptions = async (proposal) => {
+    setAiSuggestLoading(true);
+    try {
+      const recentContext = messages
+        .filter(m => m.text && m.sender)
+        .slice(-15)
+        .map(m => `${m.sender}: ${m.text}`)
+        .join('\n');
+      const prompt = `You are helping structure a boardroom vote. Based on the discussion below and the proposed motion, suggest 2-4 concrete, distinct options to vote on.\n\nMotion: "${proposal}"\n\nRecent discussion:\n${recentContext}\n\nReturn ONLY a valid JSON array of 2-4 short option strings (each under 12 words). No explanation, no markdown. Example: ["Approve budget increase","Defer to next quarter","Reject proposal"]`;
+      const result = await callGemini(prompt, "You output only a valid JSON array of strings. No markdown, no explanation.", 300);
+      const cleaned = result.trim().replace(/^```json|^```|```$/gm, '').trim();
+      const options = JSON.parse(cleaned);
+      if (Array.isArray(options) && options.length >= 2) {
+        setPendingVote(v => ({ ...v, options: options.slice(0, 4).map(o => String(o)) }));
+      }
+    } catch (e) {
+      console.error('AI suggest options failed', e);
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  };
+
   // Step 2: Runs the actual vote from the modal
   const runVote = async (voteConfig) => {
     setPendingVote(null);
@@ -817,16 +980,25 @@ export default function App() {
       setProcessingStage("The board is voting...");
       const results = await runBatchVoteAgent(boardMembers, minutesSnapshot, whiteboardFacts, proposal, options, clarification);
 
-      let passed, summary;
+      let passed, summary, isTie = false, tiedKeys = null;
       if (options.length >= 2) {
-        // Multi-option: winner = option with most votes
+        // Multi-option: tally votes, detect ties
         const tally = {};
         options.forEach((_, i) => { tally[String.fromCharCode(65 + i)] = 0; });
         results.forEach(r => { if (tally[r.vote] !== undefined) tally[r.vote]++; });
-        const winnerKey = Object.keys(tally).reduce((a, b) => tally[a] >= tally[b] ? a : b);
-        const winnerText = options[winnerKey.charCodeAt(0) - 65];
-        passed = true;
-        summary = `OPTION ${winnerKey} SELECTED: "${winnerText}"`;
+        const maxVotes = Math.max(...Object.values(tally));
+        const topKeys = Object.keys(tally).filter(k => tally[k] === maxVotes);
+        if (topKeys.length > 1) {
+          isTie = true;
+          tiedKeys = topKeys;
+          passed = false;
+          summary = `TIED VOTE — No winner. Options ${topKeys.join(', ')} each received ${maxVotes} vote${maxVotes !== 1 ? 's' : ''}`;
+        } else {
+          const winnerKey = topKeys[0];
+          const winnerText = options[winnerKey.charCodeAt(0) - 65];
+          passed = true;
+          summary = `OPTION ${winnerKey} SELECTED: "${winnerText}"`;
+        }
       } else {
         const yesVotes = results.filter(r => r.vote === 'YES').length;
         const noVotes = results.filter(r => r.vote === 'NO').length;
@@ -851,7 +1023,7 @@ export default function App() {
 
       const yesVotes = options.length < 2 ? results.filter(r => r.vote === 'YES').length : null;
       const noVotes = options.length < 2 ? results.filter(r => r.vote === 'NO').length : null;
-      setReportData({ boardName, boardMembers, minutes: minutesSnapshot, proposal, options, results, resolution, passed, yesVotes, noVotes });
+      setReportData({ boardName, boardMembers, minutes: minutesSnapshot, proposal, options, results, resolution, passed, yesVotes, noVotes, isTie, tiedKeys });
       setShowReportModal(true);
       setAutoMode(false);
       autoModeRef.current = false;
@@ -907,7 +1079,8 @@ export default function App() {
         agreement: Math.min(100, Math.max(0, suggestion.stats?.agreement ?? 50)),
         aggression: Math.min(100, Math.max(0, suggestion.stats?.aggression ?? 30))
       },
-      model: 'gemini-2.0-flash'
+      model: MEMBER_MODELS[Math.floor(Math.random() * MEMBER_MODELS.length)].id,
+      voice_id: getVoiceForName(suggestion.name),
     };
     // When in template modal context, add to pendingMembers instead of live board
     if (showTemplateModal) {
@@ -1189,6 +1362,7 @@ export default function App() {
   const handleIntervention = () => {
     setAutoMode(false);
     autoModeRef.current = false;
+    autoLoopRunningRef.current = false;
     setIsProcessing(false);
     setProcessingStage("");
     setRetryStatus(null);
@@ -1250,7 +1424,9 @@ export default function App() {
         minutesCollapsed={minutesCollapsed} setMinutesCollapsed={setMinutesCollapsed} minutes={minutes}
         alignmentCollapsed={alignmentCollapsed} setAlignmentCollapsed={setAlignmentCollapsed}
         boardMembers={boardMembers} setShowMemberConfig={setShowMemberConfig}
+        setShowLibrary={setShowLibrary}
         userPlan={userPlan} messagesUsed={messagesUsed} totalTokensUsed={totalTokensUsed} session={session}
+        onReplayTutorial={startTutorial}
       />
 
       {/* Main Stage */}
@@ -1262,7 +1438,12 @@ export default function App() {
         autoResearch={autoResearch} setAutoResearch={setAutoResearch}
         messages={messages} setMessages={setMessages} isProcessing={isProcessing}
         processingStage={processingStage} retryStatus={retryStatus}
-        boardMembers={boardMembers} speakText={speakText} messagesEndRef={messagesEndRef}
+        boardMembers={boardMembers} speakText={speakText} stopAudio={stopAudio} messagesEndRef={messagesEndRef}
+        headphonesMode={headphonesMode} setHeadphonesMode={setHeadphonesMode} isPlayingAudio={isPlayingAudio}
+        speakingMsgIndex={speakingMsgIndex}
+        headphonesTip={headphonesTip} setHeadphonesTip={setHeadphonesTip}
+        briefMode={briefMode} setBriefMode={setBriefMode}
+        preferredName={preferredName} setPreferredName={setPreferredName}
         boardName={boardName} meetingSetupDone={meetingSetupDone} setMeetingSetupDone={setMeetingSetupDone}
         setupPurpose={setupPurpose} setSetupPurpose={setSetupPurpose}
         setupBudget={setupBudget} setSetupBudget={setSetupBudget}
@@ -1294,7 +1475,7 @@ export default function App() {
         handleEditMember={handleEditMember} handleCreateMember={handleCreateMember}
         handleDeleteMember={handleDeleteMember} handleSaveMember={handleSaveMember}
         handleSaveToLibrary={handleSaveToLibrary} handlePublishMember={handlePublishMember}
-        setBoardMembers={setBoardMembers}
+        setBoardMembers={setBoardMembers} userId={session?.user?.id}
       />
 
       {/* --- Template Picker Modal --- */}
@@ -1322,7 +1503,7 @@ export default function App() {
       )}
       {/* --- Vote Setup Modal --- */}
       {pendingVote && (
-        <VoteModal pendingVote={pendingVote} setPendingVote={setPendingVote} runVote={runVote} />
+        <VoteModal pendingVote={pendingVote} setPendingVote={setPendingVote} runVote={runVote} onAISuggest={handleAISuggestOptions} isLoadingAI={aiSuggestLoading} />
       )}
 
       {/* --- Meeting Report Modal --- */}

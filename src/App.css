@@ -40,3 +40,8 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Mobile safe area — prevents content from being obscured by browser chrome */
+.safe-area-bottom {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}

@@ -3,7 +3,7 @@ import { Gavel, AlertTriangle, Globe, Volume2, X } from 'lucide-react';
 
 // Renders a single message in the chat feed.
 // Handles five variants: research, alert, error, vote-result, and standard chat (user/assistant).
-export default function MessageBubble({ msg, idx, onDismiss, onSpeak }) {
+export default function MessageBubble({ msg, idx, onDismiss, onSpeak, isSpeaking = false }) {
   if (msg.type === 'research') return (
     <div className="flex items-start gap-3 p-3 my-2 border border-cyan-900 rounded-lg bg-cyan-950/30">
       <div className="w-7 h-7 rounded-full bg-cyan-700 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -125,15 +125,15 @@ export default function MessageBubble({ msg, idx, onDismiss, onSpeak }) {
   return (
     <div className={`flex w-full mb-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white mr-3 shadow-lg ${msg.avatar || 'bg-gray-600'}`}>{msg.sender[0]}</div>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white mr-3 shadow-lg flex-shrink-0 ${msg.avatar || 'bg-gray-600'}${isSpeaking ? ' ring-2 ring-violet-400 ring-offset-1 ring-offset-gray-950' : ''}`}>{msg.sender[0]}</div>
       )}
-      <div className={`max-w-[85%] sm:max-w-[75%] p-3 rounded-lg text-sm shadow-md ${isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-800 border border-gray-700 text-gray-200 rounded-bl-none'}`}>
+      <div className={`max-w-[85%] sm:max-w-[75%] p-3 rounded-lg text-sm shadow-md transition-colors ${isUser ? 'bg-blue-600 text-white rounded-br-none' : `bg-gray-800 border text-gray-200 rounded-bl-none ${isSpeaking ? 'border-violet-500/60 bg-gray-800/80 shadow-violet-900/30 shadow-lg' : 'border-gray-700'}`}`}>
         <div className="flex items-center justify-between gap-2 mb-1">
-          <div className="text-xs font-bold opacity-50">{msg.sender}</div>
+          <div className="text-xs font-bold opacity-50">{msg.sender}{msg.senderRole && <span className="font-normal opacity-75"> · {msg.senderRole}</span>}</div>
           <button
-            onClick={() => onSpeak(msg.text)}
+            onClick={() => onSpeak(idx)}
             className="opacity-50 hover:opacity-100 transition-opacity p-1 hover:text-indigo-300"
-            title="Read aloud"
+            title="Read aloud from here"
           >
             <Volume2 size={12} />
           </button>

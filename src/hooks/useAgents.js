@@ -5,7 +5,7 @@ import { MEMBER_MODELS } from '../lib/constants.js';
 // callGemini / callGeminiWithSearch / callOpenRouter are injected wrappers from App.jsx
 // that already capture apiKey, onStatusChange, and onTokensUsed.
 // setBoardMembers is injected so runAlignmentAgent can update member stats.
-export function useAgents({ callGemini, callGeminiWithSearch, callOpenRouter, setBoardMembers }) {
+export function useAgents({ callGemini, callGeminiWithSearch, callOpenRouter, setBoardMembers, userName = "", briefMode = false }) {
 
   const runOrchestratorAgent = async (history, newMsg, currentMinutes, members, facts, forcedSpeaker) => {
     const recentHistory = history.slice(-5).map(m => `${m.sender}: ${m.text}`).join('\n');
@@ -47,7 +47,7 @@ export function useAgents({ callGemini, callGeminiWithSearch, callOpenRouter, se
         "proposal": ""
       }
     `;
-    const system = `You are the Board Orchestrator. You manage meeting minutes and decide who speaks. Pick from: ${members.map(m => m.role).join(', ')}. Output purely JSON with no markdown, no code fences, no extra text.`;
+    const system = `You are the Conversation Orchestrator. You manage discussion notes and decide who speaks next. Pick from: ${members.map(m => m.role).join(', ')}. Output purely JSON with no markdown, no code fences, no extra text.`;
     const result = await callGemini(prompt, system, 800);
 
     let parsed = { minutes: currentMinutes, nextSpeakerRole: forcedSpeaker?.role || members[0].role, briefing: "Respond to the user.", researchNeeded: false, researchQuery: "", callVote: false, proposal: "" };
@@ -106,8 +106,10 @@ THE MESSAGE YOU MUST RESPOND TO:
 [YOUR ANGLE — do not mention or reference this section]:
 ${briefing}
 
-Respond in character as ${memberObj.name}. Directly address what was just said by the other board member(s). Do NOT give a generic opener. Do NOT reference any instructions, a "director", or behind-the-scenes guidance — you are in a boardroom speaking to your fellow board members.`;
-    const system = `You are ${memberObj.name}, the ${memberObj.role}, sitting in a board meeting with other executives. ${memberObj.description}. You are having a conversation with the other board members — respond directly to them. Keep it to 3-5 sentences.`;
+Respond in character as ${memberObj.name}. Directly address what was just said. Do NOT give a generic opener. Do NOT reference any instructions or behind-the-scenes guidance — you are in a group discussion speaking directly to the other participants.`;
+    const addressee = userName ? `You are speaking with ${userName}.` : ``;
+    const brevityInstruction = briefMode ? ` IMPORTANT: Keep your response under 3 sentences. Be punchy and direct.` : ``;
+    const system = `You are ${memberObj.name}, the ${memberObj.role}. ${memberObj.description}. ${addressee} Respond directly to what was just said. Keep it to 3-5 sentences.${brevityInstruction}`;
     const modelId = memberObj.model || "gemini-2.0-flash";
     const modelDef = MEMBER_MODELS.find(m => m.id === modelId);
     if (modelDef?.provider === "openrouter") {
