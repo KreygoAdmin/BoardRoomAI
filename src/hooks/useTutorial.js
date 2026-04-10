@@ -10,18 +10,18 @@ const ALL_STEPS = [
   },
   {
     targetId: 'tutorial-send-button',
-    title: 'Submit your message',
-    text: 'Hit Send (or press Enter) — the board will respond with their individual perspectives.',
+    title: 'Send your message',
+    text: 'Click the send button to open the send menu. Choose "Auto Convo: On" to send your message and let the board keep debating hands-free, or "Next Speaker" to send and then pick who responds.',
   },
   {
     targetId: 'tutorial-automode-toggle',
     title: 'Auto Mode',
-    text: 'Toggle Auto Mode to let the board debate hands-free. They keep talking until you intervene or hit the turn limit.',
+    text: 'Toggle Auto Mode to let the board debate hands-free without sending a message. They keep talking until you intervene or hit the turn limit.',
   },
   {
     targetId: 'tutorial-next-speaker',
     title: 'Next Speaker',
-    text: "Not in Auto Mode? Use this to prompt the AI to pick the most relevant board member to respond next — without sending a message yourself.",
+    text: "Prompt the AI to pick the most relevant board member to respond next — without sending a message yourself.",
   },
   {
     targetId: 'tutorial-vote-button',
@@ -59,6 +59,12 @@ const ALL_STEPS = [
     targetId: 'tutorial-minutes',
     title: "Secretary's Minutes",
     text: 'The AI automatically tracks consensus, friction, momentum, and action items as the discussion progresses. Review these at any time.',
+    skipOnMobile: true,
+  },
+  {
+    targetId: 'tutorial-new-boardroom',
+    title: 'Create a New Boardroom',
+    text: 'Want to explore a different scenario? Click the board list icon (next to the board name) to switch between boardrooms or start a fresh one — each keeps its own members, whiteboard, and history.',
     skipOnMobile: true,
   },
 ];

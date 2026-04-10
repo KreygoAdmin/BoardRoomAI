@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
-import { Lock, Mail, Loader2, AlertCircle, KeyRound } from 'lucide-react';
+import { Lock, Mail, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { FREE_PLAN_MEMBER_LIMIT, FREE_PLAN_CREDIT_LIMIT, FREE_PLAN_LIBRARY_LIMIT } from './lib/constants';
+import kreygoLogo from './assets/kreygo-logo.png';
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
@@ -25,11 +27,13 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    
-    const { error } = await supabase.auth.signUp({ email, password });
-    
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+
     if (error) {
         setError(error.message);
+    } else if (data.user && data.user.identities?.length === 0) {
+        setError("An account with this email already exists. Please sign in instead.");
     } else {
         setMessage("Check your email for the confirmation link!");
     }
@@ -61,10 +65,16 @@ export default function Auth() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-200 font-sans">
+      <a
+        href="https://boardroom.kreygo.com"
+        className="absolute top-4 left-4 flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+      >
+        <ArrowLeft size={13} /> <img src={kreygoLogo} alt="Kreygo" className="h-4 w-auto bg-indigo-600 rounded px-1.5 py-0.5" />
+      </a>
       <div className="w-full max-w-md p-8 bg-gray-900 border border-gray-800 rounded-lg shadow-2xl">
         <div className="flex justify-center mb-6">
-          <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-            <Lock size={24} />
+          <div className="bg-indigo-600 rounded-lg flex items-center justify-center p-2">
+            <img src={kreygoLogo} alt="Kreygo" className="h-12 w-auto" />
           </div>
         </div>
         
@@ -85,6 +95,18 @@ export default function Auth() {
              <div className="mb-4 p-3 bg-green-900/30 border border-green-900/50 rounded flex items-center gap-2 text-green-200 text-sm">
                 <Mail size={16} /> {message}
             </div>
+        )}
+
+        {isSigningUp && (
+          <div className="mb-6 bg-gray-800/50 border border-gray-700/50 rounded-lg p-4 space-y-3">
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">How it works</p>
+            <ul className="space-y-2 text-sm text-gray-300">
+              <li className="flex gap-2"><span className="text-indigo-400 flex-shrink-0">•</span><span><span className="font-semibold text-white">Build your board</span> — Assign AI executives with distinct roles and personalities</span></li>
+              <li className="flex gap-2"><span className="text-indigo-400 flex-shrink-0">•</span><span><span className="font-semibold text-white">Drive the discussion</span> — Type messages to steer debates and strategy sessions</span></li>
+              <li className="flex gap-2"><span className="text-indigo-400 flex-shrink-0">•</span><span><span className="font-semibold text-white">Call a vote</span> — Put motions to a formal vote and get a per-member breakdown</span></li>
+            </ul>
+            <p className="text-[11px] text-gray-500 pt-1 border-t border-gray-700/50">Free plan includes {FREE_PLAN_MEMBER_LIMIT} board members, {FREE_PLAN_CREDIT_LIMIT} credits, and {FREE_PLAN_LIBRARY_LIMIT} saved boards.</p>
+          </div>
         )}
 
         <form className="space-y-4">

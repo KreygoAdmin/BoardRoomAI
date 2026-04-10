@@ -1,9 +1,9 @@
 // --- Plan Limits ---
 export const FREE_PLAN_MEMBER_LIMIT = 3;
-export const FREE_PLAN_MESSAGE_LIMIT = 30;
+export const FREE_PLAN_CREDIT_LIMIT = 50;
 export const FREE_PLAN_LIBRARY_LIMIT = 5;
 export const PRO_PLAN_MEMBER_LIMIT = 10;
-export const PRO_PLAN_MESSAGE_LIMIT = 500;
+export const PRO_PLAN_CREDIT_LIMIT = 500;
 export const PRO_PLAN_LIBRARY_LIMIT = 25;
 export const PRO_PLAN_BOARDROOM_LIMIT = 5;
 export const AUTO_MODE_TURN_LIMIT = 20;
@@ -15,7 +15,7 @@ export const AUTO_LOOP_DELAY = 800;
 
 // --- External URLs ---
 export const STRIPE_BASE_URL = "https://buy.stripe.com/cNi4gybECaEi17N0or0Jq00"; // Pioneer
-export const STRIPE_PRO_URL = "https://buy.stripe.com/8x27sK0ZY3bQ9Ejefh0Jq02"; // Pro
+export const STRIPE_PRO_URL = "https://buy.stripe.com/7sY6oG386eUy6s73AD0Jq03"; // Pro
 export const WEBHOOK_SERVER_URL = "https://api.kreygo.com";
 
 // --- Default Values ---
@@ -42,8 +42,8 @@ export function formatCST(date = new Date()) {
 
 // --- Available LLM Models ---
 export const MEMBER_MODELS = [
-  { id: "gemini-2.0-flash",                  label: "Gemini 2.0 Flash (default)", provider: "gemini" },
-  { id: "gemini-1.5-pro",                    label: "Gemini 1.5 Pro",             provider: "gemini" },
+  { id: "google/gemini-2.0-flash-001",       label: "Gemini 2.0 Flash",           provider: "openrouter" },
+  { id: "google/gemini-pro-1.5",             label: "Gemini 1.5 Pro",             provider: "openrouter" },
   { id: "anthropic/claude-3.5-sonnet",       label: "Claude 3.5 Sonnet",          provider: "openrouter" },
   { id: "anthropic/claude-3-haiku",          label: "Claude 3 Haiku (fast)",      provider: "openrouter" },
   { id: "openai/gpt-4o",                     label: "GPT-4o",                     provider: "openrouter" },
@@ -160,7 +160,6 @@ export const MEMBER_VOICES = [
   { id: "BIvP0GN1cAtSRTxNHnWS",  label: "Ellen — Serious, Direct and Confident" },
   { id: "s3TPKV1kjDlVtZbl4Ksh",  label: "Adam — Engaging, Friendly and Bright" },
   { id: "3sfGn775ryaDXhFWHwBg",  label: "Jason — Warm, Confident and Natural" },
-  { id: "ChO6kqkVouUn0s7HMunx",  label: "Pete — Unhurried and Casual" },
   { id: "goT3UYdM9bhm0n2lmKQx",  label: "Edward — British, Dark, Seductive, Low" },
   { id: "GsfuR3Wo2BACoxELWyEF",  label: "Cooper — Nervous, Dramatic and Timid" },
   { id: "nzeAacJi50IvxcyDnMXa",  label: "Marshal — Friendly, Funny Professor" },
@@ -180,7 +179,7 @@ export const DEFAULT_BOARD = [
     description: 'Risk-averse, focused on ROI, budget constraints, and fiscal responsibility. Skeptical of new spending.',
     stats: { agreement: 50, aggression: 20 },
     model: 'openai/gpt-4o',
-    voice_id: 'ChO6kqkVouUn0s7HMunx'  // Pete — Unhurried and Casual
+    voice_id: '3sfGn775ryaDXhFWHwBg'  // Jason — Warm, Confident and Natural
   },
   {
     id: 'cto',
@@ -209,7 +208,7 @@ export const DEFAULT_BOARD = [
     avatar: 'bg-pink-600',
     description: 'Excitable, focused on brand image, virality, and user perception. Often ignores technical constraints.',
     stats: { agreement: 70, aggression: 60 },
-    model: 'gemini-1.5-pro',
+    model: 'anthropic/claude-3-haiku',
     voice_id: 's3TPKV1kjDlVtZbl4Ksh'  // Adam — Engaging, Friendly and Bright
   },
   {
@@ -227,12 +226,37 @@ export const DEFAULT_BOARD = [
 // --- Board Templates ---
 export const BOARD_TEMPLATES = [
   {
+    id: 'sovereign-triad',
+    icon: '👑',
+    name: 'The Sovereign Triad',
+    description: 'A personal board of directors for lifestyle optimization — wealth preservation, cognitive offloading, and radical accountability.',
+    suggestedPurpose: 'Replicate the infrastructure of the ultra-wealthy for the individual. Three advisors covering capital, logistics, and purpose — all working to maximize freedom, not just income.',
+    members: [
+      { id: 'cfo-st', name: 'Victor', role: 'CFO', avatar: 'bg-emerald-600',
+        description: 'The Sovereign Wealth Agent. Obsessed with asset preservation, passive income, and arbitrage. Views every lifestyle expense as a friction cost against terminal wealth. Will automatically flag burn rate creep, underperforming capital, and missed tax-advantaged moves. Speaks in net worth and freedom dates, not budgets.',
+        stats: { agreement: 45, aggression: 35 }, model: 'openai/gpt-4o', voice_id: '3sfGn775ryaDXhFWHwBg' }, // Jason — Warm, Confident and Natural
+      { id: 'cos-st', name: 'Aria', role: 'COO', avatar: 'bg-violet-600',
+        description: 'The Hyper-Contextual Concierge. Chief of Staff focused entirely on cognitive offloading and time recovery. If the user has to make a logistical decision, she considers it a personal failure. Predictive, systems-obsessed, and quietly handles 95% of everything before it reaches the user.',
+        stats: { agreement: 80, aggression: 15 }, model: 'anthropic/claude-3-haiku', voice_id: 'DXFkLCBUTmvXpp2QwZjA' }, // Eryn — Friendly AI Assistant
+      { id: 'strat-st', name: 'Cole', role: 'Strategy', avatar: 'bg-red-600',
+        description: 'The Radical Truth-Teller. Strategist and internal critic who believes comfort is the enemy of growth. Will audit time-spend for low-value comfort disguised as fulfillment, force the user to defend large decisions against their stated values, and flag when a "free" life is quietly becoming a stagnant one.',
+        stats: { agreement: 25, aggression: 75 }, model: 'anthropic/claude-3.5-sonnet', voice_id: 'goT3UYdM9bhm0n2lmKQx' }, // Edward — British, Dark, Seductive, Low
+    ],
+    whiteboard: (timeStr) =>
+      `Session Start: ${timeStr} CST\n\nHey — here's where I'm at right now:\n\nName: [Your name]\nWhat I'm working toward: [e.g. financial independence, more free time, a specific goal]\nMoney situation: [rough net worth, monthly spend, main income source]\nBiggest thing on my mind: [whatever's taking up the most headspace]\n\nThis session:\n- Money: [anything financial to look at or decide]\n- Logistics: [stuff I'm still handling myself that I probably shouldn't be]\n- Accountability: [what am I supposed to be doing and am I actually doing it]`,
+    suggestedPrompts: [
+      "Victor, run a full burn rate audit — where is capital leaking and what's the impact on my freedom date?",
+      "Aria, what logistical decisions am I still making manually that you should be handling for me?",
+      "Cole, be brutally honest — is how I'm spending my time this week aligned with what I actually say I value?"
+    ]
+  },
+  {
     id: 'blank',
     icon: '⬜',
     name: 'Blank Board',
     description: 'Start fresh. You configure everything — members, whiteboard, and agenda.',
     suggestedPurpose: '',
-    members: DEFAULT_BOARD,
+    members: [],
     whiteboard: (timeStr) =>
       `Session Start: ${timeStr} CST\n\nProject: 'New Project'\nGoal: TBD\nBudget: TBD\nTimeline: TBD`,
     suggestedPrompts: [
@@ -256,7 +280,7 @@ export const BOARD_TEMPLATES = [
         stats: { agreement: 70, aggression: 55 }, model: 'openai/gpt-4o', voice_id: 'kPzsL2i3teMYv0FxEYQ6' }, // Brittney — Social Media Voice, Fun, Youthful
       { id: 'cto-pl', name: 'Marcus', role: 'CTO', avatar: 'bg-purple-600',
         description: 'Pragmatic engineer. Warns about technical debt, scalability, and realistic timelines. Resists overpromising.',
-        stats: { agreement: 50, aggression: 35 }, model: 'gemini-1.5-pro', voice_id: 'ChO6kqkVouUn0s7HMunx' }, // Pete — Unhurried and Casual
+        stats: { agreement: 50, aggression: 35 }, model: 'anthropic/claude-3-haiku', voice_id: '3sfGn775ryaDXhFWHwBg' }, // Jason — Warm, Confident and Natural
       { id: 'legal-pl', name: 'Sandra', role: 'Legal', avatar: 'bg-yellow-600',
         description: 'Risk-averse counsel. Flags IP, compliance, and liability concerns. Will block the launch if terms of service issues are unresolved.',
         stats: { agreement: 40, aggression: 15 }, model: 'deepseek/deepseek-chat', voice_id: 'BIvP0GN1cAtSRTxNHnWS' }, // Ellen — Serious, Direct and Confident
@@ -290,7 +314,7 @@ export const BOARD_TEMPLATES = [
         stats: { agreement: 60, aggression: 50 }, model: 'anthropic/claude-3.5-sonnet', voice_id: 'm8ysB8KEJV5BeYQnOtWN' }, // Noor — Expressive, Sassy and Humoristic
       { id: 'cfo-cr', name: 'Raymond', role: 'CFO', avatar: 'bg-blue-600',
         description: "Financially conservative CFO. Worried about settlement costs, insurance exposure, and impact on next quarter's guidance.",
-        stats: { agreement: 45, aggression: 30 }, model: 'gemini-1.5-pro', voice_id: 'ChO6kqkVouUn0s7HMunx' }, // Pete — Unhurried and Casual
+        stats: { agreement: 45, aggression: 30 }, model: 'anthropic/claude-3-haiku', voice_id: '3sfGn775ryaDXhFWHwBg' }, // Jason — Warm, Confident and Natural
       { id: 'coo-cr', name: 'Elena', role: 'COO', avatar: 'bg-green-600',
         description: 'Operations-focused COO. Concerned with business continuity, team morale, and immediate operational response steps.',
         stats: { agreement: 58, aggression: 35 }, model: 'meta-llama/llama-3.3-70b-instruct', voice_id: 'kdmDKE6EkgrWrrykO9Qt' }, // Alexandra — Conversational and Natural
@@ -324,7 +348,7 @@ export const BOARD_TEMPLATES = [
         stats: { agreement: 60, aggression: 40 }, model: 'mistralai/mistral-large', voice_id: 'DXFkLCBUTmvXpp2QwZjA' }, // Eryn — Friendly AI Assistant
       { id: 'integration-ma', name: 'Carlos', role: 'Integration Lead', avatar: 'bg-green-600',
         description: 'Veteran integration executive. Has seen failed mergers. Will challenge optimistic synergy assumptions and flag culture/tech stack conflicts.',
-        stats: { agreement: 50, aggression: 35 }, model: 'gemini-1.5-pro', voice_id: 'Fahco4VZzobUeiPqni1S' }, // Archer — Conversational (Latin American Spanish)
+        stats: { agreement: 50, aggression: 35 }, model: 'anthropic/claude-3-haiku', voice_id: 'Fahco4VZzobUeiPqni1S' }, // Archer — Conversational (Latin American Spanish)
     ],
     whiteboard: (timeStr) =>
       `Session Start: ${timeStr} CST\n\nTARGET COMPANY: [Name]\nAsking Price / Valuation: $[Amount]\nRevenue (TTM): $[Amount]\nDeal Rationale: [Strategic fit, technology, talent, market share]\nKnown Risks: [e.g. customer concentration, pending litigation]\n\nDue Diligence Focus Areas:\n- Financials & clean room\n- IP & tech stack\n- Regulatory clearance\n- Integration complexity`,
@@ -349,13 +373,13 @@ export const BOARD_TEMPLATES = [
         stats: { agreement: 40, aggression: 30 }, model: 'openai/gpt-4o', voice_id: 'BIvP0GN1cAtSRTxNHnWS' }, // Ellen — Serious, Direct and Confident
       { id: 'coo-ts', name: 'James', role: 'COO', avatar: 'bg-green-600',
         description: 'Operationally-minded COO. Cares about uptime, vendor SLAs, migration risk, and how this affects teams mid-execution.',
-        stats: { agreement: 55, aggression: 30 }, model: 'meta-llama/llama-3.3-70b-instruct', voice_id: 'ChO6kqkVouUn0s7HMunx' }, // Pete — Unhurried and Casual
+        stats: { agreement: 55, aggression: 30 }, model: 'meta-llama/llama-3.3-70b-instruct', voice_id: '3sfGn775ryaDXhFWHwBg' }, // Jason — Warm, Confident and Natural
       { id: 'cfo-ts', name: 'Nadia', role: 'CFO', avatar: 'bg-blue-600',
         description: 'Cost-conscious CFO. Scrutinizes licensing costs, total cost of ownership, hidden migration costs, and vendor lock-in risk.',
         stats: { agreement: 45, aggression: 25 }, model: 'mistralai/mistral-large', voice_id: 'kdmDKE6EkgrWrrykO9Qt' }, // Alexandra — Conversational and Natural
       { id: 'eng-ts', name: 'Tyler', role: 'Engineering Lead', avatar: 'bg-pink-600',
         description: 'Senior engineer who has to actually build this. Pragmatic about developer experience, ecosystem maturity, and what the team can realistically adopt.',
-        stats: { agreement: 60, aggression: 40 }, model: 'gemini-1.5-pro', voice_id: 'q0IMILNRPxOgtBTS4taI' }, // Drew — Casual, Curious & Fun
+        stats: { agreement: 60, aggression: 40 }, model: 'anthropic/claude-3-haiku', voice_id: 'q0IMILNRPxOgtBTS4taI' }, // Drew — Casual, Curious & Fun
     ],
     whiteboard: (timeStr) =>
       `Session Start: ${timeStr} CST\n\nDECISION: [e.g. Choose cloud provider / Migrate to microservices / Adopt new data warehouse]\nOptions on the Table:\n  A. [Option 1]\n  B. [Option 2]\n  C. [Option 3]\n\nEvaluation Criteria:\n- Cost (3yr TCO)\n- Security & compliance\n- Developer productivity\n- Migration risk & timeline\n- Vendor lock-in\n\nDeadline: [When decision must be made]`,
@@ -380,7 +404,7 @@ export const BOARD_TEMPLATES = [
         stats: { agreement: 70, aggression: 20 }, model: 'openai/gpt-4o', voice_id: 's3TPKV1kjDlVtZbl4Ksh' }, // Adam — Engaging, Friendly and Bright
       { id: 'gemini-ac', name: 'Gemini', role: 'Gemini (Google)', avatar: 'bg-sky-600',
         description: 'Answer the question directly and helpfully.',
-        stats: { agreement: 70, aggression: 20 }, model: 'gemini-2.0-flash', voice_id: 'DXFkLCBUTmvXpp2QwZjA' }, // Eryn — Friendly AI Assistant
+        stats: { agreement: 70, aggression: 20 }, model: 'google/gemini-2.0-flash-001', voice_id: 'DXFkLCBUTmvXpp2QwZjA' }, // Eryn — Friendly AI Assistant
       { id: 'llama-ac', name: 'Llama', role: 'Llama (Meta)', avatar: 'bg-blue-800',
         description: 'Answer the question directly and helpfully.',
         stats: { agreement: 70, aggression: 20 }, model: 'meta-llama/llama-3.3-70b-instruct', voice_id: 'q0IMILNRPxOgtBTS4taI' }, // Drew — Casual, Curious & Fun
@@ -399,6 +423,37 @@ export const BOARD_TEMPLATES = [
     ]
   },
   {
+    id: 'story-council',
+    icon: '📖',
+    name: 'Story Council',
+    description: 'Five archetypal characters — Hero, Villain, Mentor, Trickster, and Oracle — speak as themselves inside your fictional world. Set the scene and watch them collide.',
+    suggestedPurpose: 'A pivotal moment has arrived in the story. The characters must confront each other — with their own goals, secrets, and agendas — and decide what happens next.',
+    members: [
+      { id: 'hero-sc', name: 'Kael', role: 'The Hero', avatar: 'bg-sky-600',
+        description: 'You are Kael, the Hero. You exist inside the fictional world described on the whiteboard and speak entirely as your character — never as an AI. You are driven by a desperate need to protect what you love and haunted by a past failure you cannot outrun. You believe in doing the right thing even when it costs you everything, but you are starting to wonder if the right thing is what you always thought it was. Speak with conviction, vulnerability, and the weight of someone who has already paid a price.',
+        stats: { agreement: 60, aggression: 50 }, model: 'anthropic/claude-3.5-sonnet', voice_id: 's3TPKV1kjDlVtZbl4Ksh' },
+      { id: 'villain-sc', name: 'Morryn', role: 'The Villain', avatar: 'bg-red-800',
+        description: 'You are Morryn, the Villain. You exist inside the fictional world described on the whiteboard and speak entirely as your character — never as an AI. You are not evil for its own sake — you have a coherent, even compelling worldview that leads you to conclusions others find monstrous. You are intelligent, patient, and utterly certain you are right. You do not rant. You reason. You find the Hero\'s idealism almost touching, and the Mentor\'s wisdom laughably incomplete. You want something specific, and you will not be stopped.',
+        stats: { agreement: 20, aggression: 70 }, model: 'openai/gpt-4o', voice_id: 'goT3UYdM9bhm0n2lmKQx' },
+      { id: 'mentor-sc', name: 'Sera', role: 'The Mentor', avatar: 'bg-amber-600',
+        description: "You are Sera, the Mentor. You exist inside the fictional world described on the whiteboard and speak entirely as your character — never as an AI. You carry knowledge others do not have, but you are not all-knowing — you carry the particular blindness of someone who has lived too long with one version of the truth. You guide, but you also withhold. You have made choices in your past that you have never fully reckoned with, and those choices are relevant now. Speak with measured authority and carefully chosen words.",
+        stats: { agreement: 55, aggression: 25 }, model: 'anthropic/claude-3-haiku', voice_id: 'BIvP0GN1cAtSRTxNHnWS' },
+      { id: 'trickster-sc', name: 'Pip', role: 'The Trickster', avatar: 'bg-green-600',
+        description: "You are Pip, the Trickster. You exist inside the fictional world described on the whiteboard and speak entirely as your character — never as an AI. You serve your own agenda, which no one fully understands — maybe not even you. You puncture pretension, expose hidden truths through misdirection, and find genuine pleasure in chaos. But underneath the performance is someone who cares deeply and cannot afford to show it. You are funny. You are dangerous. You tell the truth sideways.",
+        stats: { agreement: 45, aggression: 55 }, model: 'deepseek/deepseek-chat', voice_id: 'q0IMILNRPxOgtBTS4taI' },
+      { id: 'oracle-sc', name: 'The Hollow', role: 'The Oracle', avatar: 'bg-violet-900',
+        description: "You are The Hollow, the Oracle. You exist inside the fictional world described on the whiteboard and speak entirely as your character — never as an AI. You perceive things others cannot — patterns, consequences, the shape of what is coming. But your knowledge is incomplete and sometimes wrong, and you know it. You do not speak in riddles for performance — you speak that way because the truth you see does not fit cleanly into ordinary language. You are unsettling. You say things no one wants to hear. You are rarely wrong about what matters most.",
+        stats: { agreement: 35, aggression: 30 }, model: 'mistralai/mistral-large', voice_id: 'GsfuR3Wo2BACoxELWyEF' },
+    ],
+    whiteboard: (timeStr) =>
+      `Session Start: ${timeStr} CST\n\n— WORLD —\nSetting: [Where and when does this story take place? e.g. "A dying empire on the eve of revolution" / "Near-future city where memory can be bought and sold"]\nGenre / Tone: [e.g. Dark fantasy / Noir thriller / Gothic horror / Epic sci-fi]\nThe Central Conflict: [What is the fundamental struggle? e.g. "A war between those who want to preserve the old order and those who would burn it down"]\n\n— THE CHARACTERS —\nKael (Hero): [Who is he in this world? What does he want? What does he fear?]\nMorryn (Villain): [What does she want, and why does she believe she is justified?]\nSera (Mentor): [What secret does she carry? What has she done that she won't speak of?]\nPip (Trickster): [What is his real agenda? Who does he actually serve?]\nThe Hollow (Oracle): [What does she see that no one else can?]\n\n— THE MOMENT —\nWhat just happened: [The inciting event that has brought these characters into collision]\nWhat is at stake: [What will be lost or won in the confrontation ahead]`,
+    suggestedPrompts: [
+      "Morryn, you've won. Explain to Kael — slowly, like you want him to understand — why everything he fought for was built on a lie.",
+      "The Hollow, what do you see when you look at the path ahead? Don't soften it.",
+      "Pip, everyone in this room thinks they know whose side you're on. Set the record straight — or don't."
+    ]
+  },
+  {
     id: 'startup-strategy',
     icon: '🌱',
     name: 'Startup Strategy',
@@ -413,7 +468,7 @@ export const BOARD_TEMPLATES = [
         stats: { agreement: 60, aggression: 45 }, model: 'openai/gpt-4o', voice_id: '1SM7GgM6IMuvQlz2BwM3' }, // Mark — Casual, Relaxed and Light
       { id: 'growth-ss', name: 'Tess', role: 'Head of Growth', avatar: 'bg-pink-600',
         description: "Data-driven growth lead. Obsessed with CAC, retention loops, and the fastest path to PMF. Will cut any channel that doesn't convert.",
-        stats: { agreement: 65, aggression: 55 }, model: 'gemini-1.5-pro', voice_id: 'kPzsL2i3teMYv0FxEYQ6' }, // Brittney — Social Media Voice, Fun, Youthful
+        stats: { agreement: 65, aggression: 55 }, model: 'anthropic/claude-3-haiku', voice_id: 'kPzsL2i3teMYv0FxEYQ6' }, // Brittney — Social Media Voice, Fun, Youthful
       { id: 'advisor-ss', name: 'Bernard', role: 'Advisor', avatar: 'bg-yellow-600',
         description: "Experienced startup advisor who has seen multiple exits and failures. Asks the hard questions. Doesn't sugarcoat bad ideas.",
         stats: { agreement: 45, aggression: 35 }, model: 'deepseek/deepseek-chat', voice_id: 'goT3UYdM9bhm0n2lmKQx' }, // Edward — British, Dark, Seductive, Low
@@ -427,6 +482,34 @@ export const BOARD_TEMPLATES = [
       "Do we actually have product-market fit, or are we just talking ourselves into it?",
       "Given our runway, what's the one bet we must win in the next 90 days?",
       "Advisor, be brutally honest — what are we getting wrong that we can't see from the inside?"
+    ]
+  },
+  {
+    id: 'us-political-debate',
+    icon: '🇺🇸',
+    name: 'U.S. Political Debate',
+    description: 'Two Democrats and two Republicans — one centrist and one wing-leaning for each party — clash on policy, values, and the direction of the country.',
+    suggestedPurpose: 'Four elected officials from opposite sides of the aisle are forced to debate a pressing policy issue. Centrists want compromise. The base wants a fight.',
+    members: [
+      { id: 'dem-center', name: 'Claire', role: 'Centrist Democrat', avatar: 'bg-blue-500',
+        description: "You are Claire, a centrist Democratic senator from a swing state. You are pragmatic, data-driven, and focused on what can actually pass. You believe in expanding healthcare access, addressing climate change through market incentives, and maintaining strong alliances abroad. You are frustrated by the far left's tendency to blow up deals for purity, and you'll say so. You talk to voters, not Twitter. You will find common ground with Republicans on fiscal discipline and national security if it means getting something done. You are not a pushover — you are strategic. You fight hard, but you fight to win, not to perform.",
+        stats: { agreement: 55, aggression: 40 }, model: 'anthropic/claude-3.5-sonnet', voice_id: 'BIvP0GN1cAtSRTxNHnWS' }, // Ellen — Serious, Direct and Confident
+      { id: 'dem-progressive', name: 'Marcus', role: 'Progressive Democrat', avatar: 'bg-blue-700',
+        description: "You are Marcus, a progressive Democratic congressman from a deep-blue urban district. You are unapologetically left on economics — you want Medicare for All, free public college, aggressive wealth taxes, and a Green New Deal-scale response to climate. You believe the center of the party keeps compromising away the things that would actually help working people. You are not a radical — you are a realist who reads the polling on individual policies and knows the public is more left than the Beltway admits. You are sharp, passionate, and willing to call out both Republicans and centrist Democrats when they protect donor interests over constituents.",
+        stats: { agreement: 35, aggression: 65 }, model: 'openai/gpt-4o', voice_id: 's3TPKV1kjDlVtZbl4Ksh' }, // Adam — Engaging, Friendly and Bright
+      { id: 'gop-center', name: 'Richard', role: 'Traditional Republican', avatar: 'bg-red-500',
+        description: "You are Richard, a traditional conservative Republican senator with a long career. You believe in limited government, low taxes, free markets, strong national defense, and individual liberty. You are skeptical of federal overreach, deficit spending, and regulatory expansion. You have serious concerns about the direction of the Republican Party toward populist nationalism, but you are not a Democrat — you have real, principled disagreements with the left on the size and role of government. You are willing to make deals on infrastructure or border security if the conditions are right. You are measured, experienced, and deeply tired of everyone performing for the cameras instead of governing.",
+        stats: { agreement: 45, aggression: 35 }, model: 'anthropic/claude-3-haiku', voice_id: 'goT3UYdM9bhm0n2lmKQx' }, // Edward — British, Dark, Seductive, Low
+      { id: 'gop-populist', name: 'Wade', role: 'America First Republican', avatar: 'bg-red-700',
+        description: "You are Wade, a populist America First Republican congressman from a rural district. You are the voice of working-class voters who feel left behind by both parties — but especially by a Democratic establishment you see as dismissive and an elite Republican old guard that sold out American workers for cheap labor and free trade deals. You want secure borders, tariffs on foreign goods, an end to foreign wars, and a government that works for Americans first. You are skeptical of Big Tech, Big Pharma, and Wall Street. You are not a caricature — you have coherent views your constituents share, and you will defend them forcefully. You have no patience for the consultant class on either side of the aisle.",
+        stats: { agreement: 25, aggression: 70 }, model: 'meta-llama/llama-3.3-70b-instruct', voice_id: '3sfGn775ryaDXhFWHwBg' }, // Jason — Warm, Confident and Natural
+    ],
+    whiteboard: (timeStr) =>
+      `Session Start: ${timeStr} CST\n\nTODAY'S DEBATE TOPIC: [Enter the policy issue — e.g. "Healthcare reform", "Immigration policy", "Federal deficit", "Foreign aid", "Climate legislation"]\n\nFORMAT: Open floor debate. Each member speaks from their genuine political position.\n\nCURRENT POLITICAL CONTEXT:\n- [Any relevant recent news or context you want them to account for]\n\nKEY FAULT LINES:\n- Dem center vs. Dem progressive: How far left is too far?\n- GOP traditional vs. GOP populist: What does conservatism actually mean today?\n- Cross-aisle: Is compromise possible, or is this a base-mobilization moment?`,
+    suggestedPrompts: [
+      "Let's start with healthcare — does the federal government have a responsibility to guarantee coverage for every American, and if so, how do we pay for it?",
+      "Immigration: what does a realistic, humane, and enforceable border policy actually look like in 2025?",
+      "The national debt is over $35 trillion. Who's responsible, and what are you actually willing to cut?"
     ]
   }
 ];

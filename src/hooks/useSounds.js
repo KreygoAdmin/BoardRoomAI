@@ -8,6 +8,22 @@ import { useRef, useCallback } from 'react';
 export function useSounds() {
   const ctxRef = useRef(null);
 
+  // Preload audio files so playback is instant
+  const gavelRef = useRef(null);
+  const cheerRef = useRef(null);
+  if (!gavelRef.current) {
+    const gavel = new Audio('/618138__aerny__gavel-on-wooden-desk.wav');
+    gavel.volume = 0.8;
+    gavel.load();
+    gavelRef.current = gavel;
+  }
+  if (!cheerRef.current) {
+    const cheer = new Audio('/480735__craigsmith__r02-03-small-crowd-cheering.wav');
+    cheer.volume = 0.6;
+    cheer.load();
+    cheerRef.current = cheer;
+  }
+
   const getCtx = () => {
     if (!ctxRef.current) {
       ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -179,6 +195,53 @@ export function useSounds() {
     } catch (_) {}
   }, []);
 
+  // Member action request — attention knock: two quick low taps + rising ping
+  const memberRequest = useCallback(() => {
+    try {
+      const ctx = getCtx();
+      const now = ctx.currentTime;
+      // Two soft knock taps
+      [0, 0.12].forEach(offset => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(320, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(160, now + offset + 0.08);
+        gain.gain.setValueAtTime(0.14, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.1);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.12);
+      });
+      // Rising ping after the knock
+      const ping = ctx.createOscillator();
+      const pingGain = ctx.createGain();
+      ping.connect(pingGain);
+      pingGain.connect(ctx.destination);
+      ping.type = 'sine';
+      ping.frequency.setValueAtTime(660, now + 0.28);
+      ping.frequency.exponentialRampToValueAtTime(990, now + 0.5);
+      pingGain.gain.setValueAtTime(0, now + 0.28);
+      pingGain.gain.linearRampToValueAtTime(0.08, now + 0.32);
+      pingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      ping.start(now + 0.28);
+      ping.stop(now + 0.58);
+    } catch (_) {}
+  }, []);
+
+  // Vote result — gavel strike then crowd cheering (preloaded)
+  const voteResult = useCallback(() => {
+    try {
+      const gavel = gavelRef.current;
+      const cheer = cheerRef.current;
+      gavel.currentTime = 0;
+      cheer.currentTime = 0;
+      gavel.play();
+      cheer.play();
+    } catch (_) {}
+  }, []);
+
   // Research result — upward sparkle arpeggio
   const research = useCallback(() => {
     try {
@@ -201,5 +264,5 @@ export function useSounds() {
     } catch (_) {}
   }, []);
 
-  return { click, send, receive, speakerPick, vote, autoOn, autoOff, research };
+  return { click, send, receive, speakerPick, vote, autoOn, autoOff, research, memberRequest, voteResult };
 }

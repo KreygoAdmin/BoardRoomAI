@@ -76,7 +76,7 @@ export default function TemplateModal({
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="vote-modal-pop bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 flex-shrink-0">
@@ -236,10 +236,10 @@ export default function TemplateModal({
                       <div className="text-xs font-medium text-white truncate">{m.role}</div>
                       <div className="text-[10px] text-gray-500 truncate">{m.name}</div>
                     </div>
-                    <Pencil size={11} className="text-gray-600 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
+                    <Pencil size={11} className="text-gray-600 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity hidden md:block" />
                     <button
                       onClick={(e) => { e.stopPropagation(); setPendingMembers(prev => prev.filter(p => p.id !== m.id)); if (customForm.editingId === m.id) closeForm(); }}
-                      className="text-gray-700 hover:text-red-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                      className="text-gray-600 hover:text-red-400 transition-colors flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
                     >
                       <Trash2 size={12} />
                     </button>

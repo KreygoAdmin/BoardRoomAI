@@ -1,10 +1,22 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { X, ClipboardList } from 'lucide-react';
 
 export default function ReportModal({ reportData, onClose }) {
+  const bodyRef = useRef(null);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    // Give the DOM a tick to render all content, then scroll to bottom
+    const raf = requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="vote-modal-pop bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
           <div>
@@ -15,7 +27,7 @@ export default function ReportModal({ reportData, onClose }) {
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5 scrollbar-thin scrollbar-thumb-gray-800">
+        <div ref={bodyRef} className="overflow-y-auto flex-1 px-6 py-4 space-y-5 scrollbar-thin scrollbar-thumb-gray-800">
 
           {/* Board Members */}
           <div>

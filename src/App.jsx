@@ -7,10 +7,10 @@ import {
   BOARD_TEMPLATES,
   DEFAULT_MINUTES,
   FREE_PLAN_MEMBER_LIMIT,
-  FREE_PLAN_MESSAGE_LIMIT,
+  FREE_PLAN_CREDIT_LIMIT,
   FREE_PLAN_LIBRARY_LIMIT,
   PRO_PLAN_MEMBER_LIMIT,
-  PRO_PLAN_MESSAGE_LIMIT,
+  PRO_PLAN_CREDIT_LIMIT,
   PRO_PLAN_LIBRARY_LIMIT,
   PRO_PLAN_BOARDROOM_LIMIT,
   formatCST,
@@ -25,11 +25,13 @@ import {
   parseJsonObject,
   parseJsonArray,
 } from './lib/api.js';
-import { useAgents } from './hooks/useAgents.js';
+import { useAgents, parseActionRequest } from './hooks/useAgents.js';
 import { useAutoMode } from './hooks/useAutoMode.js';
 import VoteModal from './components/modals/VoteModal.jsx';
+import MemberActionRequest from './components/modals/MemberActionRequest.jsx';
 import ReportModal from './components/modals/ReportModal.jsx';
 import TemplateModal from './components/modals/TemplateModal.jsx';
+import PricingModal from './components/modals/PricingModal.jsx';
 import MemberConfigModal from './components/modals/MemberConfigModal.jsx';
 import ChatStage from './components/ChatStage.jsx';
 import Sidebar from './components/Sidebar.jsx';
@@ -98,30 +100,14 @@ export default function App() {
   const fetchUserPlan = async (userId) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('plan, total_tokens, messages_used, billing_cycle_anchor')
+      .select('plan, messages_used, billing_cycle_anchor')
       .eq('id', userId)
       .single();
 
     if (data) {
         console.log("User Plan Loaded:", data.plan);
         setUserPlan(data.plan);
-        setTotalTokensUsed(data.total_tokens || 0);
-        // Monthly reset check
-        const anchor = new Date(data.billing_cycle_anchor);
-        const now = new Date();
-        const nextReset = new Date(anchor);
-        nextReset.setMonth(nextReset.getMonth() + 1);
-
-        if (now >= nextReset) {
-          // Cycle has elapsed — reset usage
-          await supabase
-            .from('profiles')
-            .update({ messages_used: 0, billing_cycle_anchor: now.toISOString() })
-            .eq('id', userId);
-          setMessagesUsed(0);
-        } else {
-          setMessagesUsed(data.messages_used || 0);
-        }
+        setMessagesUsed(data.messages_used || 0);
     } else {
         console.error("Error fetching plan:", error);
     }
@@ -131,12 +117,12 @@ export default function App() {
 
   // Plan State
   const [userPlan, setUserPlan] = useState('free'); // Default to free (safe mode)
-  const [totalTokensUsed, setTotalTokensUsed] = useState(0);
   const [messagesUsed, setMessagesUsed] = useState(0);
+  const [showPricingModal, setShowPricingModal] = useState(false);
 
   // Plan-derived limits (computed once per render, used throughout)
   const planMemberLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_MEMBER_LIMIT : FREE_PLAN_MEMBER_LIMIT;
-  const planMessageLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_MESSAGE_LIMIT : FREE_PLAN_MESSAGE_LIMIT;
+  const planMessageLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_CREDIT_LIMIT : FREE_PLAN_CREDIT_LIMIT;
   const planLibraryLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_LIBRARY_LIMIT : FREE_PLAN_LIBRARY_LIMIT;
   const planBoardroomLimit = userPlan === 'pioneer' ? Infinity : userPlan === 'pro' ? PRO_PLAN_BOARDROOM_LIMIT : 1;
 
@@ -145,12 +131,14 @@ export default function App() {
 
   // Session settings
   const [briefMode, setBriefMode] = useState(false);
-  const [headphonesMode, setHeadphonesMode] = useState(true);
+  const [headphonesMode, setHeadphonesMode] = useState(() => localStorage.getItem('headphonesMode') === 'true');
+  useEffect(() => { localStorage.setItem('headphonesMode', headphonesMode); }, [headphonesMode]);
 
   // Audio queue for sequential playback
   const audioQueueRef = useRef([]);
   const isPlayingAudioRef = useRef(false);
   const currentAudioRef = useRef(null);
+  const audioGenerationRef = useRef(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [speakingMsgIndex, setSpeakingMsgIndex] = useState(null);
 
@@ -184,6 +172,8 @@ export default function App() {
   // Auto-Conversation Mode
   const { autoMode, setAutoMode, autoModeRef, autoTurnCountRef, lastAutoSpeakerRef, autoLoopRunningRef, runAutoLoop } = useAutoMode();
   const resumeAutoAfterUserTurn = useRef(false);
+  const resumeAutoAfterVote = useRef(false);
+  const nextSpeakerAfterTurnRef = useRef(false);
 
   // --- Marketplace State ---
   const [showMarketplace, setShowMarketplace] = useState(false);
@@ -206,11 +196,21 @@ export default function App() {
   const [addedSuggestionIds, setAddedSuggestionIds] = useState(new Set());
   const aiBuilderEndRef = useRef(null);
   const autoSaveTimerRef = useRef(null);
+  const boardLoadedRef = useRef(false); // prevents loadBoard from re-running on token refresh
 
   const [minutes, setMinutes] = useState(DEFAULT_MINUTES);
 
+  // Documents
+  const [documents, setDocuments] = useState([]);
+  const [documentsCollapsed, setDocumentsCollapsed] = useState(true);
+
   // UI State
   const [showSettings, setShowSettings] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Theme
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') !== 'false');
+  useEffect(() => { localStorage.setItem('darkMode', darkMode); }, [darkMode]);
   const [showMemberConfig, setShowMemberConfig] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -220,12 +220,15 @@ export default function App() {
   const [reportData, setReportData] = useState(null);
   const [pendingVote, setPendingVote] = useState(null);
   // pendingVote shape: { proposal: string, options: string[], clarification: string }
+  const [pendingMemberAction, setPendingMemberAction] = useState(null);
+  // pendingMemberAction shape: { type: 'vote'|'research', member: memberObj, proposal?: string, query?: string }
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
   const [minutesCollapsed, setMinutesCollapsed] = useState(true);
+  const [showActionNudge, setShowActionNudge] = useState(false);
   // Template Modal State
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('blank');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('sovereign-triad');
   const [pendingBoardName, setPendingBoardName] = useState('New Boardroom');
   const [templateCustomizeOpen, setTemplateCustomizeOpen] = useState(false);
   const [pendingMembers, setPendingMembers] = useState([]);
@@ -237,6 +240,25 @@ export default function App() {
   const [setupTimeline, setSetupTimeline] = useState('');
   const messagesEndRef = useRef(null);
   const whiteboardSnapshot = useRef("");
+
+  const applyDocumentAction = useCallback(({ isEdit, docTitle, docContent, docSummary }, memberName) => {
+    const now = new Date().toISOString();
+    setDocuments(prev => {
+      const idx = prev.findIndex(d => d.title.toLowerCase() === docTitle?.toLowerCase());
+      if (isEdit && idx !== -1) {
+        const existing = prev[idx];
+        const revision = { content: existing.content, editedBy: memberName, editedAt: now, summary: docSummary || 'Amended' };
+        return prev.map((d, i) => i === idx ? { ...d, content: docContent, revisions: [...d.revisions, revision] } : d);
+      }
+      if (idx !== -1) {
+        // Same title proposed again — treat as edit
+        const existing = prev[idx];
+        const revision = { content: existing.content, editedBy: memberName, editedAt: now, summary: 'Revised' };
+        return prev.map((d, i) => i === idx ? { ...d, content: docContent, revisions: [...d.revisions, revision] } : d);
+      }
+      return [...prev, { id: `doc_${Date.now()}`, title: docTitle || 'Untitled', content: docContent || '', createdBy: memberName, createdAt: now, revisions: [] }];
+    });
+  }, []);
 
   // --- TUTORIAL ---
   const {
@@ -264,7 +286,12 @@ export default function App() {
 
   // --- DATA PERSISTENCE (LOAD) ---
   useEffect(() => {
-    if (!session) return;
+    if (!session) {
+      boardLoadedRef.current = false;
+      return;
+    }
+    if (boardLoadedRef.current) return; // skip token-refresh re-fires
+    boardLoadedRef.current = true;
 
     const loadBoard = async () => {
       const { data, error } = await supabase
@@ -297,15 +324,19 @@ export default function App() {
         if (data.settings?.briefMode !== undefined) {
             setBriefMode(data.settings.briefMode);
         }
+        if (data.settings?.documents) {
+            setDocuments(data.settings.documents);
+        }
+        setPreferredName(data.settings?.preferredName || '');
       } else {
         // No boards exist — first-time user. Open template modal with welcome flow.
         const timeStr = formatCST();
-        const blankTemplate = BOARD_TEMPLATES[0];
-        const initialWhiteboard = blankTemplate.whiteboard(timeStr);
-        setSelectedTemplateId('blank');
-        setPendingBoardName('New Boardroom');
+        const defaultTemplate = BOARD_TEMPLATES.find(t => t.id === 'sovereign-triad');
+        const initialWhiteboard = defaultTemplate.whiteboard(timeStr);
+        setSelectedTemplateId('sovereign-triad');
+        setPendingBoardName(defaultTemplate.name);
         setTemplateCustomizeOpen(false);
-        setPendingMembers([...DEFAULT_BOARD]);
+        setPendingMembers([...defaultTemplate.members]);
         setPendingWhiteboard(initialWhiteboard);
         setAIBuilderMessages([]);
         setAddedSuggestionIds(new Set());
@@ -344,28 +375,37 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, retryStatus]);
 
+  // Scroll to bottom when report modal closes so vote result is visible
+  useEffect(() => {
+    if (!showReportModal) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [showReportModal]);
+
   useEffect(() => {
     aiBuilderEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [aiBuilderMessages, isAIBuilderLoading]);
 
+  // --- MEMBER ACTION REQUEST SOUND ---
+  useEffect(() => {
+    if (pendingMemberAction) sounds.memberRequest();
+  }, [pendingMemberAction]);
+
   // --- AUTO-CONVERSATION LOOP TRIGGER ---
   useEffect(() => {
-    if (!autoMode || isProcessing || messages.length === 0 || speakerPickState) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.type === 'vote-result') {
-      setAutoMode(false);
-      autoModeRef.current = false;
-      return;
-    }
+    if (!autoMode || isProcessing || messages.length === 0 || speakerPickState || pendingMemberAction) return;
     runAutoLoop({
-      messages, minutes, boardMembers, whiteboardFacts,
+      messages, minutes, boardMembers, whiteboardFacts, documents,
       userPlan, messagesUsed, autoResearch,
       runOrchestratorAgent, runBoardMemberAgent, runAlignmentAgent, runResearchAgent,
       openVoteModal,
       setMessages, setMinutes, setIsProcessing, setProcessingStage, setRetryStatus,
-      headphonesMode, waitForSilence,
+      headphonesMode, waitForSilence, waitForNearSilence,
+      parseActionRequest, setPendingMemberAction, setAutoMode,
+      applyDocumentAction,
+      onTurnLimitReached: () => setShowActionNudge(true),
     });
-  }, [autoMode, messages, isProcessing]);
+  }, [autoMode, messages, isProcessing, pendingMemberAction]);
 
   // --- AUTO-SAVE ---
   const autoSave = useCallback(async () => {
@@ -377,7 +417,7 @@ export default function App() {
       whiteboard: whiteboardFacts,
       members: boardMembers,
       messages: messages,
-      settings: { autoResearch: autoResearch, minutes: minutes, briefMode: briefMode }
+      settings: { autoResearch: autoResearch, minutes: minutes, briefMode: briefMode, documents: documents, preferredName: preferredName }
     };
     try {
       if (boardId) {
@@ -392,7 +432,7 @@ export default function App() {
       console.warn("Auto-save failed:", e);
       setSaveStatus("Error!");
     }
-  }, [session, boardId, boardName, whiteboardFacts, boardMembers, messages, autoResearch, minutes]);
+  }, [session, boardId, boardName, whiteboardFacts, boardMembers, messages, autoResearch, minutes, documents, preferredName]);
 
   // --- AUTO-SAVE on message change (2s debounce) ---
   useEffect(() => {
@@ -426,6 +466,7 @@ export default function App() {
   const processAudioQueue = async () => {
     if (isPlayingAudioRef.current || audioQueueRef.current.length === 0) return;
     isPlayingAudioRef.current = true;
+    const myGeneration = audioGenerationRef.current;
     setIsPlayingAudio(true);
     const { text, voiceId, userId, msgIndex = null } = audioQueueRef.current.shift();
     setSpeakingMsgIndex(msgIndex);
@@ -449,9 +490,11 @@ export default function App() {
             audio.playbackRate = 1.15;
             currentAudioRef.current = audio;
             await new Promise(resolve => {
-              audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-              audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-              audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+              const cleanup = () => { URL.revokeObjectURL(url); resolve(); };
+              audio.onended = cleanup;
+              audio.onerror = cleanup;
+              audio.onpause = cleanup;
+              audio.play().catch(cleanup);
             });
             currentAudioRef.current = null;
             spokenviaElevenLabs = true;
@@ -470,6 +513,8 @@ export default function App() {
         });
       }
     } catch (e) { console.warn('Audio error:', e); }
+    // If stopAudio() was called while we were awaiting, a new generation has started — exit without clobbering its state.
+    if (audioGenerationRef.current !== myGeneration) return;
     isPlayingAudioRef.current = false;
     if (audioQueueRef.current.length === 0) { setIsPlayingAudio(false); setSpeakingMsgIndex(null); }
     processAudioQueue(); // next item
@@ -483,6 +528,7 @@ export default function App() {
 
   const stopAudio = () => {
     audioQueueRef.current = [];
+    audioGenerationRef.current++;
     if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     isPlayingAudioRef.current = false;
@@ -495,6 +541,24 @@ export default function App() {
     const check = () => {
       if (!isPlayingAudioRef.current && audioQueueRef.current.length === 0) resolve();
       else setTimeout(check, 150);
+    };
+    check();
+  });
+
+  // Resolves earlyMs milliseconds before the current audio ends (accounting for playbackRate).
+  // Falls back to waitForSilence behavior for short clips or when timing info isn't available.
+  const waitForNearSilence = (earlyMs = 4000) => new Promise(resolve => {
+    const check = () => {
+      if (!isPlayingAudioRef.current && audioQueueRef.current.length === 0) { resolve(); return; }
+      const audio = currentAudioRef.current;
+      if (audio && audio.duration && !isNaN(audio.duration) && audioQueueRef.current.length === 0) {
+        const rate = audio.playbackRate || 1;
+        const totalMs = (audio.duration / rate) * 1000;
+        const remainingMs = ((audio.duration - audio.currentTime) / rate) * 1000;
+        // Only trigger early if: audio has started, clip is long enough to bother, and within earlyMs of end
+        if (audio.currentTime > 0 && totalMs > earlyMs && remainingMs <= earlyMs) { resolve(); return; }
+      }
+      setTimeout(check, 150);
     };
     check();
   });
@@ -550,16 +614,16 @@ export default function App() {
   };
 
   // --- DATA PERSISTENCE (SAVE) ---
-  const handleSaveBoard = async () => {
+  const handleSaveBoard = async (membersOverride) => {
     setSaveStatus("Saving...");
-    
+
     const payload = {
       user_id: session.user.id,
       name: boardName,
       whiteboard: whiteboardFacts,
-      members: boardMembers,
+      members: membersOverride ?? boardMembers,
       messages: messages,
-      settings: { autoResearch, minutes, briefMode }
+      settings: { autoResearch, minutes, briefMode, preferredName }
     };
 
     try {
@@ -582,11 +646,12 @@ export default function App() {
       }
       setSaveStatus("Saved!");
       setTimeout(() => setSaveStatus(""), 2000);
-      loadBoardList();
     } catch (error) {
       console.error("Save failed:", error);
       setSaveStatus("Error!");
+      return;
     }
+    loadBoardList();
   };
 
   // --- BOARD LIST (load all boards for switcher) ---
@@ -619,6 +684,8 @@ export default function App() {
       } else {
         setMinutes(DEFAULT_MINUTES);
       }
+      setDocuments(data.settings?.documents || []);
+      setPreferredName(data.settings?.preferredName || '');
       setAIBuilderMessages([]);
       setAddedSuggestionIds(new Set());
       setShowBoardSwitcher(false);
@@ -635,20 +702,20 @@ export default function App() {
       return;
     }
     const timeStr = formatCST();
-    const blankTemplate = BOARD_TEMPLATES[0];
-    const initialWhiteboard = blankTemplate.whiteboard(timeStr);
-    setSelectedTemplateId('blank');
-    setPendingBoardName('New Boardroom');
+    const defaultTemplate = BOARD_TEMPLATES.find(t => t.id === 'sovereign-triad');
+    const initialWhiteboard = defaultTemplate.whiteboard(timeStr);
+    setSelectedTemplateId('sovereign-triad');
+    setPendingBoardName(defaultTemplate.name);
     setTemplateCustomizeOpen(false);
-    setPendingMembers([...DEFAULT_BOARD]);
+    setPendingMembers([...defaultTemplate.members]);
     setPendingWhiteboard(initialWhiteboard);
     setAIBuilderMessages([]);
     setAddedSuggestionIds(new Set());
     setShowTemplateModal(true);
     setShowBoardSwitcher(false);
-    // Auto-init AI builder with blank board context
+    // Auto-init AI builder with default template context
     setIsAIBuilderLoading(true);
-    const initResponse = await runAIBuilderAgent([], { members: DEFAULT_BOARD, whiteboard: initialWhiteboard });
+    const initResponse = await runAIBuilderAgent([], { members: defaultTemplate.members, whiteboard: initialWhiteboard });
     setIsAIBuilderLoading(false);
     if (!initResponse) {
       setAIBuilderMessages([{ role: 'assistant', type: 'ai-chat', text: "Describe your project and I'll suggest the right board members." }]);
@@ -681,6 +748,7 @@ export default function App() {
     setMessages([]);
     setWhiteboardFacts(finalWhiteboard);
     setMinutes(DEFAULT_MINUTES);
+    setDocuments([]);
     setAIBuilderMessages([]);
     setAddedSuggestionIds(new Set());
     // Mark setup done since context was collected in the modal
@@ -691,6 +759,8 @@ export default function App() {
     setShowTemplateModal(false);
     setTemplateCustomizeOpen(false);
     setIsFirstTimeUser(false);
+    autoModeRef.current = true;
+    setAutoMode(true);
   };
 
   // --- START FRESH (free tier: delete current board and open template picker) ---
@@ -698,15 +768,16 @@ export default function App() {
     if (!window.confirm("Delete this boardroom and start a new one?\n\nThis cannot be undone.")) return;
     if (boardId) {
       await supabase.from('boardrooms').delete().eq('id', boardId);
+      loadBoardList();
     }
     const timeStr = formatCST();
-    const blankTemplate = BOARD_TEMPLATES[0];
-    const initialWhiteboard = blankTemplate.whiteboard(timeStr);
+    const defaultTemplate = BOARD_TEMPLATES.find(t => t.id === 'sovereign-triad');
+    const initialWhiteboard = defaultTemplate.whiteboard(timeStr);
     setBoardId(null);
-    setSelectedTemplateId('blank');
-    setPendingBoardName('New Boardroom');
+    setSelectedTemplateId('sovereign-triad');
+    setPendingBoardName(defaultTemplate.name);
     setTemplateCustomizeOpen(false);
-    setPendingMembers([...DEFAULT_BOARD]);
+    setPendingMembers([...defaultTemplate.members]);
     setPendingWhiteboard(initialWhiteboard);
     setAIBuilderMessages([]);
     setAddedSuggestionIds(new Set());
@@ -752,13 +823,15 @@ export default function App() {
     // 2. Reset Local State
     setMessages([]);
     setMinutes(DEFAULT_MINUTES);
-    
+    setDocuments([]);
+
     // 3. Reset Database
     if (session && boardId) {
         const { error } = await supabase
             .from('boardrooms')
-            .update({ 
-                messages: [] // Wipe the chat column in DB
+            .update({
+                messages: [],
+                settings: { autoResearch: autoResearch, minutes: DEFAULT_MINUTES, briefMode: briefMode, documents: [] }
             })
             .eq('id', boardId);
 
@@ -777,17 +850,11 @@ export default function App() {
   // --- API WRAPPERS ---
   // These delegate to the extracted functions in src/lib/api.js,
   // capturing React state setters via closure so call sites remain unchanged.
-  const onTokensUsed = session ? (count) => {
-    setTotalTokensUsed(prev => prev + count);
-    supabase.rpc('increment_tokens', { user_id: session.user.id, count })
-      .then(({ error }) => { if (error) console.error('increment_tokens failed:', error); });
-  } : null;
-
   const callGemini = (prompt, systemInstruction = "You are a helpful AI.", maxTokens = 1000) =>
-    callGeminiApi(prompt, systemInstruction, maxTokens, { apiKey: systemApiKey, onStatusChange: setRetryStatus, onTokensUsed });
+    callGeminiApi(prompt, systemInstruction, maxTokens, { apiKey: systemApiKey, onStatusChange: setRetryStatus });
 
   const callGeminiWithSearch = (prompt, maxTokens = 300) =>
-    callGeminiWithSearchApi(prompt, maxTokens, { apiKey: systemApiKey, onStatusChange: setRetryStatus, onTokensUsed });
+    callGeminiWithSearchApi(prompt, maxTokens, { apiKey: systemApiKey, onStatusChange: setRetryStatus });
 
   const callOpenRouter = (userPrompt, systemInstruction = "", model, maxTokens = 500) =>
     callOpenRouterApi(userPrompt, systemInstruction, model, maxTokens, { apiKey: openRouterKey, onStatusChange: setRetryStatus });
@@ -806,37 +873,55 @@ export default function App() {
   // --- Logic Functions ---
 
   // --- Manual Trigger ---
-  const handleUserTurn = async () => {
-    if (!userInput.trim()) return;
+  const handleUserTurn = async (directText = null, options = {}) => {
+    const text = directText ?? userInput;
+    if (!text.trim()) return;
 
-    // If autoMode is running, pause it and resume after user turn completes
+    if (boardMembers.length === 0) {
+      setMessages(prev => [...prev, { role: 'system', text: "Your boardroom has no members. Add some board members before starting a session.", type: 'error' }]);
+      if (!directText) setUserInput("");
+      return;
+    }
+
+    // Pause autoMode if running; always re-enable after user turn completes
     if (autoModeRef.current) {
       autoModeRef.current = false;
       setAutoMode(false);
+    }
+    if (options.nextSpeaker) {
+      resumeAutoAfterUserTurn.current = false;
+      nextSpeakerAfterTurnRef.current = true;
+    } else {
       resumeAutoAfterUserTurn.current = true;
     }
 
-    // --- Message Limit Check ---
-    if (userPlan !== 'pioneer' && messagesUsed >= planMessageLimit) {
-        const upgradeMsg = userPlan === 'pro'
-          ? `🔒 PRO PLAN LIMIT REACHED (${PRO_PLAN_MESSAGE_LIMIT} Messages). Upgrade to Pioneer for unlimited messages.`
-          : `🔒 FREE PLAN LIMIT REACHED (${FREE_PLAN_MESSAGE_LIMIT} Messages). Upgrade to Pro or Pioneer to continue.`;
-        setMessages(prev => [...prev, { role: 'system', text: upgradeMsg, type: 'error' }]);
-        setUserInput("");
+    // --- Server-side message limit enforcement ---
+    try {
+        const limitRes = await fetch(`${WEBHOOK_SERVER_URL}/use-message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: session.user.id }),
+        });
+        if (!limitRes.ok) {
+            setMessages(prev => [...prev, { role: 'system', type: 'upgrade', plan: userPlan }]);
+            if (!directText) setUserInput("");
+            return;
+        }
+        const { messages_used: serverCount } = await limitRes.json();
+        setMessagesUsed(serverCount);
+    } catch (err) {
+        console.error("Failed to check credit limit:", err);
+        setMessages(prev => [...prev, { role: 'system', text: '⚠️ Could not verify credit limit. Please try again.', type: 'error' }]);
+        if (!directText) setUserInput("");
         return;
     }
 
-    const userMsg = { role: 'user', sender: 'User', text: userInput, type: 'chat' };
+    const userMsg = { role: 'user', sender: preferredName || 'User', text: text, type: 'chat' };
     sounds.send();
     setMessages(prev => [...prev, userMsg]);
-    setUserInput("");
+    if (!directText) setUserInput("");
     setIsProcessing(true);
     setRetryStatus(null);
-
-    // Increment usage counter
-    const newCount = messagesUsed + 1;
-    setMessagesUsed(newCount);
-    supabase.from('profiles').update({ messages_used: newCount }).eq('id', session.user.id);
 
     try {
       setProcessingStage("The Board is processing...");
@@ -852,19 +937,15 @@ export default function App() {
           setMessages(prev => [...prev, {
             role: 'system',
             sender: 'Research',
-            text: research.answer,
             type: 'research',
             query: orchestration.researchQuery,
-            sources: research.sources
+            ...research,
           }]);
         }
       }
 
-      // Show speaker picker — user chooses who responds (or accepts AI recommendation)
-      setIsProcessing(false);
-      setProcessingStage("");
-      sounds.speakerPick();
-      setSpeakerPickState({ orchestration, recommendation: orchestration.memberObj });
+      // Auto-pick the AI's recommended speaker
+      await handlePickSpeaker(orchestration.memberObj, orchestration);
 
     } catch (error) {
       console.error("Turn Error:", error);
@@ -898,10 +979,16 @@ export default function App() {
     }
   };
 
-  const handlePickSpeaker = async (chosenMember) => {
-    if (!speakerPickState) return;
-    const { orchestration, recommendation } = speakerPickState;
-    setSpeakerPickState(null);
+  const handlePickSpeaker = async (chosenMember, directOrchestration = null) => {
+    let orchestration, recommendation;
+    if (directOrchestration) {
+      orchestration = directOrchestration;
+      recommendation = directOrchestration.memberObj;
+    } else {
+      if (!speakerPickState) return;
+      ({ orchestration, recommendation } = speakerPickState);
+      setSpeakerPickState(null);
+    }
     setIsProcessing(true);
     setRetryStatus(null);
 
@@ -912,6 +999,8 @@ export default function App() {
       nextSpeaker: chosenMember.role,
       nextSpeakerName: chosenMember.name,
       nextSpeakerAvatar: chosenMember.avatar,
+      allowResearch: autoResearch,
+      documents: documents,
       briefing: isAIPick
         ? orchestration.briefing
         : `You've been called on. Respond to the last message in character.`
@@ -922,11 +1011,13 @@ export default function App() {
       const agentResponse = await runBoardMemberAgent(finalOrchestration);
       if (!agentResponse) return;
 
+      const { type: actionType, proposal: actionProposal, query: actionQuery, question: actionQuestion, isEdit, docTitle, docContent, docSummary, cleanText } = parseActionRequest(agentResponse);
+
       const agentMsg = {
         role: 'assistant',
         sender: chosenMember.name,
         senderRole: chosenMember.role,
-        text: agentResponse,
+        text: cleanText,
         type: 'chat',
         avatar: chosenMember.avatar,
         voice_id: chosenMember.voice_id || ""
@@ -935,6 +1026,24 @@ export default function App() {
 
       if (messages.length % 3 === 0) {
         runAlignmentAgent(agentMsg, boardMembers);
+      }
+
+      // Auto-apply document proposals/edits — no modal needed
+      if (actionType === 'doc' && chosenMember.canEditDocs !== false) {
+        applyDocumentAction({ isEdit, docTitle, docContent, docSummary }, chosenMember.name);
+        setDocumentsCollapsed(false);
+      }
+
+      // Surface other member action requests (vote/research/question) — user must accept or deny
+      // Suppressed if member has "allow requests" unchecked
+      if (actionType && actionType !== 'doc' && chosenMember.askUser !== false) {
+        setPendingMemberAction({
+          type: actionType,
+          member: chosenMember,
+          proposal: actionProposal,
+          query: actionQuery,
+          question: actionQuestion,
+        });
       }
     } catch (error) {
       console.error("Pick Speaker Error:", error);
@@ -948,12 +1057,17 @@ export default function App() {
         autoModeRef.current = true;
         setAutoMode(true);
       }
+      if (nextSpeakerAfterTurnRef.current) {
+        nextSpeakerAfterTurnRef.current = false;
+        setTimeout(() => handleContinue(), 0);
+      }
     }
   };
 
 
   // Step 1: Opens the vote setup modal (replaces immediate triggerVote)
-  const openVoteModal = async (proposalText = null) => {
+  const openVoteModal = async (proposalText = null, wasAutoMode = false) => {
+    if (wasAutoMode) resumeAutoAfterVote.current = true;
     if (isProcessing) return;
     let proposal = proposalText;
     if (!proposal) {
@@ -967,6 +1081,54 @@ export default function App() {
     setPendingVote({ proposal: proposal || "", options: [], clarification: "" });
   };
 
+  // --- Member Action Request: Accept ---
+  const handleAcceptMemberAction = (answer = null) => {
+    if (!pendingMemberAction) return;
+    const { type, proposal, query, wasAutoMode } = pendingMemberAction;
+    setPendingMemberAction(null);
+    if (type === 'vote') {
+      openVoteModal(proposal, wasAutoMode);
+    } else if (type === 'research') {
+      (async () => {
+        setIsProcessing(true);
+        setProcessingStage("Looking it up...");
+        try {
+          const research = await runResearchAgent(query);
+          if (research) {
+            sounds.research();
+            setMessages(prev => [...prev, {
+              role: 'system',
+              sender: 'Research',
+              type: 'research',
+              query: query,
+              ...research,
+            }]);
+          }
+        } finally {
+          setIsProcessing(false);
+          setProcessingStage("");
+          if (wasAutoMode) {
+            autoModeRef.current = true;
+            setAutoMode(true);
+          }
+        }
+      })();
+    } else if (type === 'question' && answer) {
+      if (wasAutoMode) resumeAutoAfterUserTurn.current = true;
+      handleUserTurn(answer);
+    }
+  };
+
+  // --- Member Action Request: Deny ---
+  const handleDenyMemberAction = () => {
+    const wasAuto = pendingMemberAction?.wasAutoMode;
+    setPendingMemberAction(null);
+    if (wasAuto) {
+      autoModeRef.current = true;
+      setAutoMode(true);
+    }
+  };
+
   // Step 1.5: AI-suggests multi-option vote choices from conversation context
   const handleAISuggestOptions = async (proposal) => {
     setAiSuggestLoading(true);
@@ -977,7 +1139,7 @@ export default function App() {
         .map(m => `${m.sender}: ${m.text}`)
         .join('\n');
       const prompt = `You are helping structure a boardroom vote. Based on the discussion below and the proposed motion, suggest 2-4 concrete, distinct options to vote on.\n\nMotion: "${proposal}"\n\nRecent discussion:\n${recentContext}\n\nReturn ONLY a valid JSON array of 2-4 short option strings (each under 12 words). No explanation, no markdown. Example: ["Approve budget increase","Defer to next quarter","Reject proposal"]`;
-      const result = await callGemini(prompt, "You output only a valid JSON array of strings. No markdown, no explanation.", 300);
+      const result = await callOpenRouter(prompt, "You output only a valid JSON array of strings. No markdown, no explanation.", 'anthropic/claude-3-haiku', 300);
       const cleaned = result.trim().replace(/^```json|^```|```$/gm, '').trim();
       const options = JSON.parse(cleaned);
       if (Array.isArray(options) && options.length >= 2) {
@@ -1000,7 +1162,8 @@ export default function App() {
 
     try {
       setProcessingStage("The board is voting...");
-      const results = await runBatchVoteAgent(boardMembers, minutesSnapshot, whiteboardFacts, proposal, options, clarification);
+      const votingMembers = boardMembers.filter(m => m.canVote !== false);
+      const results = await runBatchVoteAgent(votingMembers, minutesSnapshot, whiteboardFacts, proposal, options, clarification, messages);
 
       let passed, summary, isTie = false, tiedKeys = null;
       if (options.length >= 2) {
@@ -1047,10 +1210,17 @@ export default function App() {
 
       const yesVotes = options.length < 2 ? results.filter(r => r.vote === 'YES').length : null;
       const noVotes = options.length < 2 ? results.filter(r => r.vote === 'NO').length : null;
+      sounds.voteResult();
       setReportData({ boardName, boardMembers, minutes: minutesSnapshot, proposal, options, results, resolution, passed, yesVotes, noVotes, isTie, tiedKeys });
       setShowReportModal(true);
-      setAutoMode(false);
-      autoModeRef.current = false;
+      if (resumeAutoAfterVote.current) {
+        resumeAutoAfterVote.current = false;
+        autoModeRef.current = true;
+        setAutoMode(true);
+      } else {
+        setAutoMode(false);
+        autoModeRef.current = false;
+      }
 
     } catch (e) {
       console.error(e);
@@ -1076,7 +1246,8 @@ export default function App() {
 
     setEditingMember({
       id: Date.now().toString(), name: 'New Member', role: 'Advisor', avatar: 'bg-gray-600',
-      description: 'New member description.', stats: { agreement: 50, aggression: 50 }, model: 'gemini-2.0-flash'
+      description: 'New member description.', stats: { agreement: 50, aggression: 50 }, model: 'gemini-2.0-flash',
+      voice_id: getVoiceForName('New Member')
     });
   };
   
@@ -1084,7 +1255,9 @@ export default function App() {
     if (!editingMember) return;
     setBoardMembers(prev => {
       const exists = prev.find(m => m.id === editingMember.id);
-      return exists ? prev.map(m => m.id === editingMember.id ? editingMember : m) : [...prev, editingMember];
+      const updated = exists ? prev.map(m => m.id === editingMember.id ? editingMember : m) : [...prev, editingMember];
+      handleSaveBoard(updated);
+      return updated;
     });
     setEditingMember(null);
   };
@@ -1111,6 +1284,13 @@ export default function App() {
     };
     // When in template modal context, add to pendingMembers instead of live board
     if (showTemplateModal) {
+      if (userPlan !== 'pioneer' && pendingMembers.length >= planMemberLimit) {
+        const upgradeMsg = userPlan === 'pro'
+          ? `Pro Plan limit reached (${PRO_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pioneer for unlimited agents!`
+          : `Free Plan limit reached (${FREE_PLAN_MEMBER_LIMIT} Members).\n\nUpgrade to Pro or Pioneer for more agents!`;
+        alert(upgradeMsg);
+        return;
+      }
       const roleConflict = pendingMembers.some(m => m.role.toLowerCase() === suggestion.role.toLowerCase());
       if (roleConflict) { alert(`A "${suggestion.role}" already exists in this board setup.`); return; }
       setPendingMembers(prev => [...prev, newMember]);
@@ -1314,7 +1494,8 @@ export default function App() {
       role: member.role,
       description: member.description,
       avatar: member.avatar,
-      stats: member.stats
+      stats: member.stats,
+      voice_id: member.voice_id || ""
     };
 
     const { error } = await supabase
@@ -1350,7 +1531,8 @@ export default function App() {
       role: agent.role,
       avatar: agent.avatar,
       description: agent.description,
-      stats: agent.stats
+      stats: agent.stats,
+      voice_id: agent.voice_id || getVoiceForName(agent.name)
     };
 
     setBoardMembers(prev => [...prev, newMember]);
@@ -1409,31 +1591,37 @@ export default function App() {
     setMessages(prev => [...prev, { role: 'system', text: "THE CHAIR INTERVENES", type: 'alert' }]);
   };
 
-  const handleManualResearch = async () => {
+  const handleManualResearch = async (customQuery) => {
     if (isProcessing || messages.length === 0) return;
     setIsProcessing(true);
     setRetryStatus(null);
 
-    const recentText = messages.slice(-4).map(m => `${m.sender}: ${m.text}`).join('\n');
-    setProcessingStage("Identifying research question...");
-    const queryResult = await callGemini(
-      `Given this recent boardroom conversation, identify the most pressing unanswered factual question and return only a concise search query string, nothing else.\n\n${recentText}`,
-      "You are a research assistant. Output only a search query string.",
-      80
-    );
-    if (!queryResult) { setIsProcessing(false); setProcessingStage(""); return; }
+    let queryResult;
+    if (customQuery && customQuery.trim()) {
+      queryResult = customQuery.trim();
+    } else {
+      const recentText = messages.slice(-4).map(m => `${m.sender}: ${m.text}`).join('\n');
+      setProcessingStage("Identifying research question...");
+      queryResult = await callOpenRouter(
+        `Given this recent boardroom conversation, identify the most pressing unanswered factual question and return only a concise search query string, nothing else.\n\n${recentText}`,
+        "You are a research assistant. Output only a search query string.",
+        'anthropic/claude-3-haiku',
+        80
+      );
+      if (!queryResult) { setIsProcessing(false); setProcessingStage(""); return; }
+      queryResult = queryResult.trim();
+    }
 
     setProcessingStage("Looking it up...");
-    const research = await runResearchAgent(queryResult.trim());
+    const research = await runResearchAgent(queryResult);
     if (research) {
       sounds.research();
       setMessages(prev => [...prev, {
         role: 'system',
         sender: 'Research',
-        text: research.answer,
         type: 'research',
-        query: queryResult.trim(),
-        sources: research.sources
+        query: queryResult,
+        ...research,
       }]);
     }
     setIsProcessing(false);
@@ -1445,7 +1633,7 @@ export default function App() {
   // --- Render --- (components extracted to src/components/)
 
   return (
-    <div className="flex h-dvh bg-gray-950 text-gray-200 font-sans overflow-hidden relative">
+    <div className="flex h-dvh bg-gray-950 text-gray-200 font-sans overflow-hidden relative" data-theme={darkMode ? 'dark' : 'light'}>
       {/* Mobile Overlay */}
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />}
 
@@ -1463,9 +1651,11 @@ export default function App() {
         showSettings={showSettings} setShowSettings={setShowSettings} whiteboardSnapshot={whiteboardSnapshot}
         minutesCollapsed={minutesCollapsed} setMinutesCollapsed={setMinutesCollapsed} minutes={minutes}
         alignmentCollapsed={alignmentCollapsed} setAlignmentCollapsed={setAlignmentCollapsed}
-        boardMembers={boardMembers} setShowMemberConfig={setShowMemberConfig}
-        setShowLibrary={setShowLibrary}
-        userPlan={userPlan} messagesUsed={messagesUsed} totalTokensUsed={totalTokensUsed} session={session}
+        boardMembers={boardMembers} setBoardMembers={setBoardMembers} setShowMemberConfig={setShowMemberConfig}
+        setShowLibrary={setShowLibrary} handleOpenAIBuilder={handleOpenAIBuilder}
+        documents={documents} setDocuments={setDocuments}
+        documentsCollapsed={documentsCollapsed} setDocumentsCollapsed={setDocumentsCollapsed}
+        userPlan={userPlan} messagesUsed={messagesUsed} session={session}
         planMessageLimit={planMessageLimit} planBoardroomLimit={planBoardroomLimit}
         onReplayTutorial={startTutorial}
       />
@@ -1518,7 +1708,22 @@ export default function App() {
         handleDeleteMember={handleDeleteMember} handleSaveMember={handleSaveMember}
         handleSaveToLibrary={handleSaveToLibrary} handlePublishMember={handlePublishMember}
         setBoardMembers={setBoardMembers} userId={session?.user?.id}
+        showSettingsModal={showSettingsModal} setShowSettingsModal={setShowSettingsModal}
+        darkMode={darkMode} setDarkMode={setDarkMode}
+        showActionNudge={showActionNudge} onDismissNudge={() => setShowActionNudge(false)}
+        onNudgeNewBoard={userPlan === 'free' ? handleStartFresh : handleCreateBoard}
+        userPlan={userPlan}
+        onOpenPricing={() => setShowPricingModal(true)}
       />
+
+      {/* --- Pricing Modal (triggered from credit limit hit) --- */}
+      {showPricingModal && (
+        <PricingModal
+          onClose={() => setShowPricingModal(false)}
+          userPlan={userPlan}
+          session={session}
+        />
+      )}
 
       {/* --- Template Picker Modal --- */}
       {showTemplateModal && (
@@ -1546,6 +1751,15 @@ export default function App() {
       {/* --- Vote Setup Modal --- */}
       {pendingVote && (
         <VoteModal pendingVote={pendingVote} setPendingVote={setPendingVote} runVote={runVote} onAISuggest={handleAISuggestOptions} isLoadingAI={aiSuggestLoading} />
+      )}
+
+      {/* --- Member Action Request (vote / research suggested by AI member) --- */}
+      {pendingMemberAction && (
+        <MemberActionRequest
+          pendingMemberAction={pendingMemberAction}
+          onAccept={handleAcceptMemberAction}
+          onDeny={handleDenyMemberAction}
+        />
       )}
 
       {/* --- Meeting Report Modal --- */}

@@ -48,8 +48,8 @@ async function retryGeminiFetch(fetchFn, { onStatusChange } = {}) {
 }
 
 // --- Public: Standard Gemini call ---
-// options: { apiKey, onStatusChange, onTokensUsed }
-export async function callGemini(prompt, systemInstruction = "You are a helpful AI.", maxTokens = 1000, { apiKey, onStatusChange, onTokensUsed } = {}) {
+// options: { apiKey, onStatusChange }
+export async function callGemini(prompt, systemInstruction = "You are a helpful AI.", maxTokens = 1000, { apiKey, onStatusChange } = {}) {
   return retryGeminiFetch(async () => {
     const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: 'POST',
@@ -71,13 +71,16 @@ export async function callGemini(prompt, systemInstruction = "You are a helpful 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    const tokensUsed = data.usageMetadata?.totalTokenCount || 0;
-    if (tokensUsed > 0) onTokensUsed?.(tokensUsed);
-
-    if (!text && data.candidates?.[0]?.finishReason === "SAFETY") {
-      return "I cannot respond to that due to safety guidelines.";
+    if (!text) {
+      const blockReason = data.promptFeedback?.blockReason;
+      if (blockReason) return "My response was blocked by content policy.";
+      const finishReason = data.candidates?.[0]?.finishReason;
+      if (finishReason === "SAFETY") return "I cannot respond to that due to safety guidelines.";
+      if (finishReason === "RECITATION") return "I cannot reproduce that content.";
+      if (finishReason === "MAX_TOKENS") return "...";
+      // Transient/unknown — retry
+      throw new Error("EMPTY_RESPONSE");
     }
-    if (!text) throw new Error("EMPTY_RESPONSE");
 
     onStatusChange?.(null);
     return text;
@@ -85,8 +88,8 @@ export async function callGemini(prompt, systemInstruction = "You are a helpful 
 }
 
 // --- Public: Gemini call with Google Search grounding ---
-// options: { apiKey, onStatusChange, onTokensUsed }
-export async function callGeminiWithSearch(prompt, maxTokens = 300, { apiKey, onStatusChange, onTokensUsed } = {}) {
+// options: { apiKey, onStatusChange }
+export async function callGeminiWithSearch(prompt, maxTokens = 300, { apiKey, onStatusChange } = {}) {
   return retryGeminiFetch(async () => {
     const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: 'POST',
@@ -108,10 +111,13 @@ export async function callGeminiWithSearch(prompt, maxTokens = 300, { apiKey, on
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    const tokensUsed = data.usageMetadata?.totalTokenCount || 0;
-    if (tokensUsed > 0) onTokensUsed?.(tokensUsed);
-
-    if (!text) throw new Error("EMPTY_RESPONSE");
+    if (!text) {
+      const blockReason = data.promptFeedback?.blockReason;
+      if (blockReason) return { text: "My response was blocked by content policy.", sources: [] };
+      const finishReason = data.candidates?.[0]?.finishReason;
+      if (finishReason === "SAFETY") return { text: "I cannot respond to that due to safety guidelines.", sources: [] };
+      throw new Error("EMPTY_RESPONSE");
+    }
 
     const sources = data.candidates?.[0]?.groundingMetadata?.webSearchQueries || [];
     onStatusChange?.(null);

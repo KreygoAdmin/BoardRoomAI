@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Square, Play, Globe, ChevronRight, ShieldAlert, BrainCircuit, Sparkles, X, Search, Vote, RotateCcw, Users, Headphones, VolumeX, Minimize2, Volume2, MoreHorizontal } from 'lucide-react';
+import { Menu, Square, Play, Globe, ChevronRight, ShieldAlert, BrainCircuit, Sparkles, X, Search, Vote, RotateCcw, Users, Headphones, VolumeX, Minimize2, Volume2, MoreHorizontal, Settings, Plus } from 'lucide-react';
 import MessageBubble from './MessageBubble.jsx';
 import PasswordResetModal from './modals/PasswordResetModal.jsx';
 import MemberConfigModal from './modals/MemberConfigModal.jsx';
+import SettingsModal from './modals/SettingsModal.jsx';
 import { BOARD_TEMPLATES } from '../lib/constants.js';
 
 export default function ChatStage({
@@ -39,6 +40,8 @@ export default function ChatStage({
   editingMember, setEditingMember, handleEditMember, handleCreateMember,
   handleDeleteMember, handleSaveMember, handleSaveToLibrary, handlePublishMember, setBoardMembers,
   userId,
+  showSettingsModal, setShowSettingsModal, darkMode, setDarkMode,
+  showActionNudge, onDismissNudge, onNudgeNewBoard, userPlan, onOpenPricing,
 }) {
   // Speak from a given message index forward, using the voice_id stored on each message.
   const handleSpeak = (startIdx) => {
@@ -53,10 +56,32 @@ export default function ChatStage({
 
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsMenuRef = useRef(null);
+  const [showResearchInput, setShowResearchInput] = useState(false);
+  const [researchQuery, setResearchQuery] = useState('');
+  const researchInputRef = useRef(null);
+  const [showSendMenu, setShowSendMenu] = useState(false);
+  const sendMenuRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }, [userInput]);
+
+  useEffect(() => {
+    if (showResearchInput && researchInputRef.current) {
+      researchInputRef.current.focus();
+    }
+  }, [showResearchInput]);
   useEffect(() => {
     const onClickOutside = (e) => {
       if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target)) {
         setShowActionsMenu(false);
+      }
+      if (sendMenuRef.current && !sendMenuRef.current.contains(e.target)) {
+        setShowSendMenu(false);
       }
     };
     document.addEventListener('mousedown', onClickOutside);
@@ -65,7 +90,8 @@ export default function ChatStage({
 
   return (
   <div className="flex-1 flex flex-col bg-gray-950 relative w-full min-h-0">
-    <div className="h-14 border-b border-gray-800 flex items-center justify-between px-4 sm:px-6 bg-gray-900/80 backdrop-blur-sm z-10 flex-shrink-0">
+    <div className="h-14 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm z-10 flex-shrink-0 flex items-center px-4 sm:px-6">
+      <div className="max-w-4xl mx-auto w-full flex items-center justify-between">
       <div className="flex items-center gap-2">
           <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-gray-400 mr-2"><Menu size={20} /></button>
           {isPlayingAudio && headphonesMode && (
@@ -82,46 +108,6 @@ export default function ChatStage({
           )}
       </div>
       <div className="flex gap-2 overflow-x-auto min-w-0 pb-0.5">
-         <button id="tutorial-next-speaker" onClick={() => { sounds?.click(); handleContinue(); }} disabled={isProcessing || messages.length === 0 || !!speakerPickState || autoMode} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded text-xs transition-colors disabled:opacity-50" title="Pick who speaks next without sending a message">
-           <Users size={14} /> <span className="hidden sm:inline">Next Speaker</span>
-         </button>
-         <button
-           id="tutorial-automode-toggle"
-           onClick={() => {
-             const newVal = !autoMode;
-             if (newVal) sounds?.autoOn(); else sounds?.autoOff();
-             setAutoMode(newVal);
-             autoModeRef.current = newVal;
-             if (newVal) {
-               setSpeakerPickState(null);
-               autoTurnCountRef.current = 0;
-               lastAutoSpeakerRef.current = null;
-             } else {
-               setIsProcessing(false);
-               setProcessingStage("");
-               setRetryStatus(null);
-               setSpeakerPickState(null);
-             }
-           }}
-           disabled={messages.length === 0}
-           className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${
-             autoMode
-               ? 'bg-amber-900/30 text-amber-400 border-amber-900 hover:bg-amber-900/50'
-               : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700'
-           }`}
-           title={autoMode ? "Auto-conversation ON — click to stop" : "Auto-conversation OFF — click to start"}
-         >
-           {autoMode ? <Square size={13} className="fill-current" /> : <Play size={14} />}
-           <span className="hidden sm:inline">{autoMode ? 'Auto: On' : 'Auto: Off'}</span>
-         </button>
-         <button
-           id="tutorial-auto-research"
-           onClick={() => { sounds?.click(); setAutoResearch(prev => !prev); }}
-           className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${autoResearch ? 'bg-cyan-900/30 text-cyan-400 border-cyan-900 hover:bg-cyan-900/50' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700'}`}
-           title={autoResearch ? "Auto-research is ON — click to disable" : "Auto-research is OFF — click to enable"}
-         >
-           <Globe size={14} /> <span className="hidden sm:inline">{autoResearch ? 'Research: On' : 'Research: Off'}</span>
-         </button>
          <button
            id="tutorial-headphones"
            onClick={() => { sounds?.click(); setHeadphonesMode(prev => !prev); }}
@@ -139,6 +125,14 @@ export default function ChatStage({
          >
            <Minimize2 size={14} /> <span className="hidden sm:inline">{briefMode ? 'Brief: On' : 'Brief: Off'}</span>
          </button>
+         <button
+           onClick={() => { sounds?.click(); setShowSettingsModal(true); }}
+           className="flex items-center gap-1.5 px-2.5 py-1.5 border rounded text-xs transition-colors bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-300"
+           title="Settings"
+         >
+           <Settings size={14} />
+         </button>
+      </div>
       </div>
     </div>
 
@@ -189,6 +183,15 @@ export default function ChatStage({
                 />
               </div>
             </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1.5">Your name (optional)</label>
+              <input
+                value={preferredName}
+                onChange={e => setPreferredName(e.target.value)}
+                placeholder="How the board addresses you"
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none transition-colors"
+              />
+            </div>
             <button
               onClick={() => {
                 if (!setupPurpose.trim()) return;
@@ -233,7 +236,30 @@ export default function ChatStage({
           </div>
         </div>
       )}
-      {messages.length === 0 && meetingSetupDone && (
+      {messages.length === 0 && meetingSetupDone && boardMembers.length === 0 && (
+        <div className="h-full flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <Users size={40} className="text-gray-600" />
+          <div>
+            <p className="text-gray-400 font-medium mb-1">Your boardroom has no members yet.</p>
+            <p className="text-gray-600 text-sm">Add AI members to start a simulation.</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowMemberConfig(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 rounded text-xs transition-colors"
+            >
+              <Plus size={12} /> Add Member
+            </button>
+            <button
+              onClick={handleOpenAIBuilder}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-600/40 rounded text-xs transition-colors"
+            >
+              <Sparkles size={12} /> AI Builder
+            </button>
+          </div>
+        </div>
+      )}
+      {messages.length === 0 && meetingSetupDone && boardMembers.length > 0 && (
         <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-40">
           <Users size={40} className="mb-3" />
           <p className="text-sm">The Board is ready. Say something to begin.</p>
@@ -247,6 +273,7 @@ export default function ChatStage({
           onDismiss={(i) => setMessages(prev => prev.filter((_, mi) => mi !== i))}
           onSpeak={handleSpeak}
           isSpeaking={idx === speakingMsgIndex}
+          onOpenPricing={onOpenPricing}
         />
       ))}
       {isProcessing && !retryStatus && (() => {
@@ -327,66 +354,216 @@ export default function ChatStage({
       </div>
     )}
 
-    <div className="p-4 border-t border-gray-800 bg-gray-900 safe-area-bottom">
-      <div className="flex gap-2 max-w-4xl mx-auto">
-        <input
-          id="tutorial-message-input"
-          type="text"
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleUserTurn()}
-          placeholder={speakerPickState ? "Choose who speaks next..." : autoMode ? "Type to interject..." : "Present your case..."}
-          className="flex-1 bg-gray-800 border border-gray-700 text-gray-100 px-4 py-3 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
-          disabled={isProcessing || !!speakerPickState}
-        />
-        {/* Actions menu */}
-        <div className="relative flex-shrink-0" ref={actionsMenuRef}>
+    {showActionNudge && (
+      <div className="nudge-slide-up px-4 pt-3 pb-2 bg-gray-900 border-t border-gray-800">
+        <div className="max-w-4xl mx-auto flex items-center gap-2 bg-indigo-950/60 border border-indigo-800/40 rounded-lg px-3 py-2">
+          <span className="text-xs text-indigo-300 flex-1 min-w-0">The board's been at it — take a next step:</span>
           <button
-            id="tutorial-vote-button"
-            onClick={() => setShowActionsMenu(prev => !prev)}
-            disabled={isProcessing}
-            className={`flex items-center justify-center w-11 h-11 border rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${showActionsMenu ? 'bg-indigo-900/50 text-indigo-300 border-indigo-700' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}
-            title="Actions"
+            onClick={() => { openVoteModal(); onDismissNudge?.(); }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300 border border-indigo-600/40 rounded text-xs transition-colors whitespace-nowrap flex-shrink-0"
           >
-            <MoreHorizontal size={18} />
+            <Vote size={12} /> Call a Vote
           </button>
-          {showActionsMenu && (
-            <div className="absolute bottom-full mb-2 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[140px]">
-              <button
-                onClick={() => { openVoteModal(); setShowActionsMenu(false); }}
-                disabled={isProcessing}
-                className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-indigo-400 hover:bg-indigo-900/40 transition-colors disabled:opacity-40"
-              >
-                <Vote size={14} /> Call a Vote
-              </button>
-              <button
-                onClick={() => { handleManualResearch(); setShowActionsMenu(false); }}
-                disabled={isProcessing || messages.length === 0}
-                className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-cyan-400 hover:bg-cyan-900/30 transition-colors disabled:opacity-40"
-              >
-                <Search size={14} /> Look it Up
-              </button>
-            </div>
-          )}
+          <button
+            onClick={() => { onNudgeNewBoard?.(); onDismissNudge?.(); }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-700/30 hover:bg-gray-700/50 text-gray-300 border border-gray-600/40 rounded text-xs transition-colors whitespace-nowrap flex-shrink-0"
+          >
+            {userPlan === 'free' ? <><RotateCcw size={12} /> Start Fresh</> : <><Plus size={12} /> New Boardroom</>}
+          </button>
+          <button onClick={onDismissNudge} className="text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 ml-1">
+            <X size={14} />
+          </button>
         </div>
-        {/* Stop audio */}
-        <button
-          onClick={stopAudio}
-          className="flex items-center justify-center w-11 h-11 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/60 rounded-lg transition-colors flex-shrink-0"
-          title="Stop audio playback"
-        >
-          <VolumeX size={16} />
-        </button>
-        <button
-          id="tutorial-send-button"
-          onClick={handleUserTurn}
-          disabled={isProcessing || !!speakerPickState || !userInput.trim()}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center flex-shrink-0"
-        >
-          {isProcessing ? <RotateCcw className="animate-spin" size={18} /> : <ChevronRight size={20} />}
-        </button>
+      </div>
+    )}
+
+    <div className={`p-4 bg-gray-900 safe-area-bottom ${showActionNudge ? '' : 'border-t border-gray-800'}`}>
+      <div className="max-w-4xl mx-auto space-y-2">
+        {/* Speaking as + Next Speaker + Auto-conversation toggle */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-gray-600 min-w-0">
+            <span className="shrink-0">Speaking as:</span>
+            <input
+              value={preferredName}
+              onChange={e => setPreferredName(e.target.value)}
+              placeholder="Anonymous"
+              className="bg-transparent border-b border-gray-700 focus:border-indigo-500 text-gray-400 focus:text-gray-200 outline-none text-xs w-28 pb-px transition-colors"
+            />
+          </div>
+        <div className="flex gap-2">
+          <button
+            id="tutorial-next-speaker"
+            onClick={() => { sounds?.click(); handleContinue(); }}
+            disabled={isProcessing || messages.length === 0 || !!speakerPickState || autoMode}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded text-xs transition-colors disabled:opacity-50"
+            title="Pick who speaks next without sending a message"
+          >
+            <Users size={14} /> Next Speaker
+          </button>
+          <button
+            id="tutorial-automode-toggle"
+            onClick={() => {
+              const newVal = !autoMode;
+              if (newVal) sounds?.autoOn(); else sounds?.autoOff();
+              setAutoMode(newVal);
+              autoModeRef.current = newVal;
+              if (newVal) {
+                setSpeakerPickState(null);
+                autoTurnCountRef.current = 0;
+                lastAutoSpeakerRef.current = null;
+              } else {
+                setIsProcessing(false);
+                setProcessingStage("");
+                setRetryStatus(null);
+                setSpeakerPickState(null);
+              }
+            }}
+            disabled={messages.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${
+              autoMode
+                ? 'bg-amber-900/30 text-amber-400 border-amber-900 hover:bg-amber-900/50'
+                : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700'
+            }`}
+            title={autoMode ? "Auto-conversation ON — click to stop" : "Auto-conversation OFF — click to start"}
+          >
+            {autoMode ? <Square size={13} className="fill-current" /> : <Play size={14} />}
+            <span>{autoMode ? 'Auto: On' : 'Auto: Off'}</span>
+          </button>
+        </div>
+        </div>
+        {/* Input row: Textbox → Send Menu → Stop/Mute → Expand */}
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
+            id="tutorial-message-input"
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            placeholder={speakerPickState ? "Choose who speaks next..." : autoMode ? "Type to interject..." : "Present your case..."}
+            rows={1}
+            style={{ resize: 'none', overflowY: 'hidden' }}
+            className="flex-1 bg-gray-800 border border-gray-700 text-gray-100 px-4 py-3 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
+            disabled={!!speakerPickState}
+          />
+          <div className="relative flex-shrink-0" ref={sendMenuRef}>
+            <button
+              id="tutorial-send-button"
+              type="button"
+              onClick={() => setShowSendMenu(prev => !prev)}
+              disabled={isProcessing || !!speakerPickState || !userInput.trim()}
+              className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white px-5 h-11 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center flex-shrink-0 cursor-pointer"
+            >
+              {isProcessing ? <RotateCcw className="animate-spin" size={18} /> : <ChevronRight size={20} />}
+            </button>
+            {showSendMenu && (
+              <div className="absolute bottom-full mb-2 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[180px]">
+                <button
+                  onClick={() => { sounds?.click(); handleUserTurn(); setShowSendMenu(false); }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-amber-400 hover:bg-amber-900/30 transition-colors whitespace-nowrap"
+                >
+                  <Play size={14} /> Auto Convo: On
+                </button>
+                <button
+                  onClick={() => { sounds?.click(); handleUserTurn(null, { nextSpeaker: true }); setShowSendMenu(false); }}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-900/30 transition-colors whitespace-nowrap"
+                >
+                  <Users size={14} /> Next Speaker
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Stop audio */}
+          <button
+            onClick={stopAudio}
+            className="flex items-center justify-center w-11 h-11 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/60 rounded-lg transition-colors flex-shrink-0"
+            title="Stop audio playback"
+          >
+            <VolumeX size={16} />
+          </button>
+          {/* Actions menu */}
+          <div className="relative flex-shrink-0" ref={actionsMenuRef}>
+            <button
+              id="tutorial-vote-button"
+              onClick={() => setShowActionsMenu(prev => !prev)}
+              disabled={isProcessing}
+              className={`flex items-center justify-center w-11 h-11 border rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${showActionsMenu ? 'bg-indigo-900/50 text-indigo-300 border-indigo-700' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}
+              title="Actions"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {showActionsMenu && (
+              <div className="absolute bottom-full mb-2 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 min-w-[160px]">
+                <button
+                  onClick={() => { openVoteModal(); setShowActionsMenu(false); }}
+                  disabled={isProcessing}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-indigo-400 hover:bg-indigo-900/40 transition-colors disabled:opacity-40"
+                >
+                  <Vote size={14} /> Call a Vote
+                </button>
+                <button
+                  onClick={() => { setShowResearchInput(true); setResearchQuery(''); setShowActionsMenu(false); }}
+                  disabled={isProcessing}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-40"
+                >
+                  <Search size={14} /> Run Research
+                </button>
+              </div>
+            )}
+            {showResearchInput && (
+              <div className="absolute bottom-full mb-2 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-3 w-72">
+                <p className="text-xs text-gray-400 mb-2">What do you want to look up?</p>
+                <input
+                  ref={researchInputRef}
+                  type="text"
+                  value={researchQuery}
+                  onChange={e => setResearchQuery(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && researchQuery.trim()) {
+                      handleManualResearch(researchQuery.trim());
+                      setShowResearchInput(false);
+                      setResearchQuery('');
+                    } else if (e.key === 'Escape') {
+                      setShowResearchInput(false);
+                    }
+                  }}
+                  placeholder="e.g. market share of EVs in 2024"
+                  className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500 mb-2"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => setShowResearchInput(false)}
+                    className="px-3 py-1 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (researchQuery.trim()) {
+                        handleManualResearch(researchQuery.trim());
+                        setShowResearchInput(false);
+                        setResearchQuery('');
+                      }
+                    }}
+                    disabled={!researchQuery.trim()}
+                    className="px-3 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-40"
+                  >
+                    Search
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
+
+    {/* --- Settings Modal --- */}
+    {showSettingsModal && (
+      <SettingsModal
+        onClose={() => setShowSettingsModal(false)}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+    )}
 
     {/* --- Password Reset Modal --- */}
     {showResetModal && (

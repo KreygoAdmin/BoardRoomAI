@@ -2,11 +2,86 @@ import React, { useState } from 'react';
 import {
   Users, RotateCcw, CloudUpload, X, ListOrdered, Plus, Trash2,
   FileText, Edit, BrainCircuit, ClipboardList, ChevronRight,
-  Sparkles, MessageSquare, Zap, LogOut, BookMarked, Info, GraduationCap,
+  Sparkles, MessageSquare, LogOut, BookMarked, Info, GraduationCap,
+  ScrollText, Copy, Check, ChevronDown,
 } from 'lucide-react';
+import kreygoLogo from '../assets/kreygo-logo.png';
 import { MEMBER_MODELS, ROLE_DEFINITIONS, STRIPE_BASE_URL, STRIPE_PRO_URL, WEBHOOK_SERVER_URL } from '../lib/constants.js';
 import { supabase } from '../supabaseClient';
 import PricingModal from './modals/PricingModal.jsx';
+
+function DocumentCard({ doc, setDocuments }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showRevisions, setShowRevisions] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(`${doc.title}\n\n${doc.content}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded text-xs">
+      <div className="flex items-center gap-2 p-2">
+        <button onClick={() => setExpanded(e => !e)} className="flex-1 flex items-center gap-1.5 text-left min-w-0">
+          <ChevronDown size={11} className={`text-gray-500 flex-shrink-0 transition-transform duration-150 ${expanded ? '' : '-rotate-90'}`} />
+          <span className="text-white font-medium truncate">{doc.title}</span>
+        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {doc.revisions.length > 0 && (
+            <span className="text-[9px] bg-indigo-900/50 text-indigo-400 border border-indigo-800 px-1 rounded" title={`${doc.revisions.length} revision(s)`}>
+              v{doc.revisions.length + 1}
+            </span>
+          )}
+          <button onClick={handleCopy} className="text-gray-500 hover:text-green-400 transition-colors" title="Copy to clipboard">
+            {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+          </button>
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] text-red-400">Delete?</span>
+              <button
+                onClick={() => setDocuments(prev => prev.filter(d => d.id !== doc.id))}
+                className="text-[9px] px-1 py-0.5 bg-red-900/50 hover:bg-red-900 text-red-300 border border-red-800 rounded transition-colors"
+              >Yes</button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-[9px] px-1 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 border border-gray-600 rounded transition-colors"
+              >No</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} className="text-gray-600 hover:text-red-400 transition-colors" title="Delete document">
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <div className="px-2 pb-2 space-y-1.5 border-t border-gray-700 pt-2">
+          <div className="text-[9px] text-gray-500">By {doc.createdBy} · {new Date(doc.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+          <div className="bg-gray-900 border border-gray-700 rounded p-2 text-[10px] text-gray-300 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto leading-relaxed">
+            {doc.content}
+          </div>
+          {doc.revisions.length > 0 && (
+            <div>
+              <button onClick={() => setShowRevisions(r => !r)} className="text-[9px] text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1">
+                <ChevronRight size={9} className={`transition-transform ${showRevisions ? 'rotate-90' : ''}`} />
+                {doc.revisions.length} revision{doc.revisions.length > 1 ? 's' : ''}
+              </button>
+              {showRevisions && doc.revisions.slice().reverse().map((rev, i) => (
+                <div key={i} className="mt-1 bg-gray-900/60 border border-gray-800 rounded p-1.5 text-[9px] text-gray-500">
+                  <div className="text-gray-400 mb-0.5">{rev.editedBy} · {new Date(rev.editedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — {rev.summary}</div>
+                  <div className="whitespace-pre-wrap font-mono text-gray-600 max-h-24 overflow-y-auto">{rev.content}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Sidebar({
   onReplayTutorial,
@@ -21,18 +96,30 @@ export default function Sidebar({
   showSettings, setShowSettings, whiteboardSnapshot,
   minutesCollapsed, setMinutesCollapsed, minutes,
   alignmentCollapsed, setAlignmentCollapsed,
-  boardMembers, setShowMemberConfig, setShowLibrary,
-  userPlan, messagesUsed, totalTokensUsed, session,
+  boardMembers, setBoardMembers, setShowMemberConfig, setShowLibrary, handleOpenAIBuilder,
+  documents, setDocuments, documentsCollapsed, setDocumentsCollapsed,
+  userPlan, messagesUsed, session,
   planMessageLimit, planBoardroomLimit,
 }) {
   const [tooltipRole, setTooltipRole] = useState(null);
   const [showPricing, setShowPricing] = useState(false);
+
+  const hintKey = session?.user?.id ? `boardHint_dismissed_${session.user.id}` : null;
+  const [showBoardHint, setShowBoardHint] = useState(() => {
+    if (!hintKey) return false;
+    return !localStorage.getItem(hintKey);
+  });
+  const dismissBoardHint = () => {
+    if (hintKey) localStorage.setItem(hintKey, 'true');
+    setShowBoardHint(false);
+  };
+  const shouldShowHint = showBoardHint && (userPlan === 'pro' || userPlan === 'pioneer');
   return (
   <>
   <div className={`fixed inset-y-0 left-0 z-30 w-80 bg-gray-900/95 backdrop-blur shadow-2xl border-r border-gray-800 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
     <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center gap-2 justify-between">
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white"><Users size={16} /></div>
+        <div className="bg-indigo-600 rounded flex items-center justify-center p-1"><img src={kreygoLogo} alt="Kreygo" className="h-6 w-auto" /></div>
         <h1 className="font-bold text-white tracking-wider text-sm">BOARDROOM<br/><span className="text-xs text-indigo-400 font-normal">SIMULATOR</span></h1>
       </div>
       {/* Close for mobile, Save for desktop */}
@@ -46,7 +133,7 @@ export default function Sidebar({
          >
            <RotateCcw size={14} /> <span className="hidden sm:inline">Reset</span>
          </button>
-        <button onClick={handleSaveBoard} className="text-gray-400 hover:text-green-400 transition-colors" title="Save Board">
+        <button onClick={() => handleSaveBoard()} className="text-gray-400 hover:text-green-400 transition-colors" title="Save Board">
             {saveStatus === "Saving..." ? <RotateCcw size={18} className="animate-spin text-yellow-400"/> : <CloudUpload size={18} />}
         </button>
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400"><X size={20} /></button>
@@ -62,10 +149,32 @@ export default function Sidebar({
         onChange={(e) => setBoardName(e.target.value)}
         placeholder="Board name..."
       />
-      <button onClick={() => { setShowBoardSwitcher(!showBoardSwitcher); loadBoardList(); }} className={`transition-colors ${showBoardSwitcher ? 'text-indigo-400' : 'text-gray-400 hover:text-indigo-300'}`} title="Switch Boards">
-        <ListOrdered size={16} />
-      </button>
+      <div className="relative">
+        <button
+          id="tutorial-new-boardroom"
+          onClick={() => { setShowBoardSwitcher(!showBoardSwitcher); loadBoardList(); dismissBoardHint(); }}
+          className={`transition-colors ${showBoardSwitcher ? 'text-indigo-400' : 'text-gray-400 hover:text-indigo-300'}`}
+          title="Switch Boards"
+        >
+          <ListOrdered size={16} />
+        </button>
+        {shouldShowHint && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-500 rounded-full animate-ping pointer-events-none" />
+        )}
+      </div>
     </div>
+
+    {/* Board Hint Chip */}
+    {shouldShowHint && (
+      <div className="px-4 py-1.5 bg-indigo-950/60 border-b border-indigo-900/30 flex items-center justify-between">
+        <span className="text-[10px] text-indigo-400 flex items-center gap-1.5">
+          <Sparkles size={9} /> Create multiple boardrooms from the list icon
+        </span>
+        <button onClick={dismissBoardHint} className="text-indigo-700 hover:text-indigo-400 transition-colors ml-2">
+          <X size={11} />
+        </button>
+      </div>
+    )}
 
     {/* Board Switcher Dropdown */}
     {showBoardSwitcher && (
@@ -216,12 +325,33 @@ export default function Sidebar({
       </div>
 
 
+      {/* --- Documents (collapsible) --- */}
+      <div className="border-b border-gray-800">
+        <button onClick={() => setDocumentsCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
+          <h2 className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
+            <ScrollText size={12} /> Documents
+            {documents.length > 0 && <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 rounded-full font-normal">{documents.length}</span>}
+          </h2>
+          <ChevronRight size={14} className={`text-gray-500 transition-transform duration-200 ${documentsCollapsed ? '' : 'rotate-90'}`} />
+        </button>
+        {!documentsCollapsed && (
+          <div className="px-4 pb-3 space-y-2">
+            {documents.length === 0 ? (
+              <p className="text-[10px] text-gray-600 italic text-center py-2">No documents yet. Board members can draft bills and policies during the meeting.</p>
+            ) : (
+              documents.map(doc => <DocumentCard key={doc.id} doc={doc} setDocuments={setDocuments} />)
+            )}
+          </div>
+        )}
+      </div>
+
       {/* --- Board Alignment (collapsible) --- */}
       <div className="border-b border-gray-800">
         <button id="tutorial-board-members" onClick={() => setAlignmentCollapsed(c => !c)} className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 transition-colors">
           <h2 className="text-xs font-bold text-gray-400 uppercase">Board Members</h2>
           <div className="flex items-center gap-2">
             <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); setShowLibrary(true); }} className="text-gray-500 hover:text-amber-400 transition-colors" title="My Library"><BookMarked size={12} /></button>
+            <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); handleOpenAIBuilder(); }} className="text-gray-500 hover:text-purple-400 transition-colors text-[10px] font-bold leading-none" title="AI Builder">AI</button>
             <button onClick={e => { e.stopPropagation(); setShowMemberConfig(true); }} className="text-gray-500 hover:text-white transition-colors" title="Edit Members"><Edit size={12} /></button>
             <ChevronRight size={14} className={`text-gray-500 transition-transform duration-200 ${alignmentCollapsed ? '' : 'rotate-90'}`} />
           </div>
@@ -233,10 +363,18 @@ export default function Sidebar({
                 <span className="font-bold text-indigo-400">{tooltipRole}: </span>{ROLE_DEFINITIONS[tooltipRole]}
               </div>
             )}
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] text-gray-600 uppercase font-bold tracking-wide">Members</span>
+              <div className="flex gap-3 pr-0.5">
+                <span className="text-[8px] text-gray-600 uppercase font-bold w-5 text-center" title="Can vote in polls">Vote</span>
+                <span className="text-[8px] text-amber-700 uppercase font-bold w-5 text-center" title="Can send pop-up requests to you">Reqs</span>
+                <span className="text-[8px] text-emerald-700 uppercase font-bold w-5 text-center" title="Can draft and edit documents">Docs</span>
+              </div>
+            </div>
             {boardMembers.map(m => (
               <div key={m.id} className="flex items-center gap-2 p-1.5 hover:bg-gray-800 rounded transition-colors">
-                <div className={`w-4 h-4 rounded-full ${m.avatar} flex items-center justify-center text-[7px] font-bold text-white flex-shrink-0`}>{m.name[0]}</div>
-                <div className="flex-1">
+                <div className={`w-4 h-4 rounded-full ${m.avatar} flex items-center justify-center text-[7px] font-bold text-white flex-shrink-0 ${m.canVote === false ? 'opacity-40' : ''}`}>{m.name[0]}</div>
+                <div className={`flex-1 ${m.canVote === false ? 'opacity-40' : ''}`}>
                   <div className="flex justify-between text-[10px] mb-0.5">
                     <span className="text-white font-medium flex items-center gap-1">
                       {m.role} <span className="text-gray-500">({m.name})</span>
@@ -258,6 +396,29 @@ export default function Sidebar({
                       {MEMBER_MODELS.find(md => md.id === (m.model || 'gemini-2.0-flash'))?.label || 'Gemini 2.0 Flash'}
                     </span>
                   </div>
+                </div>
+                <div className="flex gap-3 flex-shrink-0 pl-1">
+                  <input
+                    type="checkbox"
+                    checked={m.canVote !== false}
+                    onChange={() => setBoardMembers(prev => prev.map(mb => mb.id === m.id ? { ...mb, canVote: m.canVote === false } : mb))}
+                    className="w-3 h-3 accent-indigo-500 cursor-pointer"
+                    title={m.canVote === false ? "Excluded from votes — click to include" : "Included in votes — click to exclude"}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={m.askUser !== false}
+                    onChange={() => setBoardMembers(prev => prev.map(mb => mb.id === m.id ? { ...mb, askUser: m.askUser === false } : mb))}
+                    className="w-3 h-3 accent-amber-500 cursor-pointer"
+                    title={m.askUser === false ? "Pop-ups suppressed — click to allow requests" : "Can send requests — click to suppress pop-ups"}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={m.canEditDocs !== false}
+                    onChange={() => setBoardMembers(prev => prev.map(mb => mb.id === m.id ? { ...mb, canEditDocs: m.canEditDocs === false } : mb))}
+                    className="w-3 h-3 accent-emerald-500 cursor-pointer"
+                    title={m.canEditDocs === false ? "Blocked from documents — click to allow" : "Can draft/edit documents — click to block"}
+                  />
                 </div>
               </div>
             ))}
@@ -298,7 +459,7 @@ export default function Sidebar({
             )}
         </div>
         
-        {/* Usage counters */}
+        {/* Usage counter */}
         <div className="flex items-center gap-2 mb-3">
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border flex-1 justify-center ${
             userPlan === 'pioneer'
@@ -309,13 +470,9 @@ export default function Sidebar({
           }`}>
             <MessageSquare size={10} />
             {userPlan === 'pioneer'
-              ? <span>Unlimited</span>
-              : <span>{messagesUsed} / {planMessageLimit}</span>
+              ? <span>{messagesUsed} credits used (unlimited)</span>
+              : <span>{messagesUsed} / {planMessageLimit} credits</span>
             }
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border bg-zinc-800 text-zinc-400 border-zinc-700 flex-1 justify-center">
-            <Zap size={10} />
-            <span>{totalTokensUsed.toLocaleString()}</span>
           </div>
         </div>
         <div className="flex items-center justify-between">

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { sleep } from '../lib/api.js';
-import { AUTO_MODE_TURN_LIMIT, AUTO_LOOP_DELAY, FREE_PLAN_MESSAGE_LIMIT } from '../lib/constants.js';
+import { AUTO_MODE_TURN_LIMIT, AUTO_LOOP_DELAY, FREE_PLAN_CREDIT_LIMIT } from '../lib/constants.js';
 
 // Owns all auto-conversation state and refs.
 // runAutoLoop receives all live state values as an options object to avoid stale closures.
@@ -12,12 +12,15 @@ export function useAutoMode() {
   const autoLoopRunningRef = useRef(false); // mutex: prevents concurrent loop instances
 
   const runAutoLoop = async ({
-    messages, minutes, boardMembers, whiteboardFacts,
+    messages, minutes, boardMembers, whiteboardFacts, documents,
     userPlan, messagesUsed, autoResearch,
     runOrchestratorAgent, runBoardMemberAgent, runAlignmentAgent, runResearchAgent,
     openVoteModal,
     setMessages, setMinutes, setIsProcessing, setProcessingStage, setRetryStatus,
-    headphonesMode, waitForSilence,
+    headphonesMode, waitForSilence, waitForNearSilence,
+    parseActionRequest, setPendingMemberAction, setAutoMode: setAutoModeOuter,
+    applyDocumentAction,
+    onTurnLimitReached,
   }) => {
     if (!autoModeRef.current || messages.length === 0) return;
     if (autoLoopRunningRef.current) return; // already running, don't stack
@@ -25,7 +28,7 @@ export function useAutoMode() {
 
     try {
     // Free plan limit
-    if (userPlan === 'free' && messagesUsed >= FREE_PLAN_MESSAGE_LIMIT) {
+    if (userPlan === 'free' && messagesUsed >= FREE_PLAN_CREDIT_LIMIT) {
       setAutoMode(false);
       autoModeRef.current = false;
       return;
@@ -36,11 +39,12 @@ export function useAutoMode() {
     if (autoTurnCountRef.current > AUTO_MODE_TURN_LIMIT) {
       setMessages(prev => [...prev, {
         role: 'system',
-        text: "Auto-mode paused after 20 turns. You can call a vote manually or toggle auto-mode back on to continue.",
+        text: "Auto-mode paused after 20 turns. Toggle it back on to keep the discussion going.",
         type: 'alert'
       }]);
       setAutoMode(false);
       autoModeRef.current = false;
+      onTurnLimitReached?.();
       return;
     }
 
@@ -48,10 +52,14 @@ export function useAutoMode() {
     // The initial sleep(150) lets React finish running the headphones useEffect (which
     // calls speakText) before we check for silence — otherwise waitForSilence sees an
     // empty queue and resolves immediately, racing ahead of the audio.
-    if (headphonesMode && waitForSilence) {
+    if (headphonesMode && (waitForNearSilence || waitForSilence)) {
       await sleep(150); // yield so speakText gets queued before checking silence
-      await waitForSilence();
-      await sleep(800); // brief pause between speakers
+      if (waitForNearSilence) {
+        await waitForNearSilence(4000); // start processing 4s before current audio ends
+      } else {
+        await waitForSilence();
+        await sleep(800); // brief pause between speakers
+      }
     } else {
       await sleep(AUTO_LOOP_DELAY);
     }
@@ -80,7 +88,7 @@ export function useAutoMode() {
         setProcessingStage("");
         setAutoMode(false);
         autoModeRef.current = false;
-        await openVoteModal(orchestration.proposal);
+        await openVoteModal(orchestration.proposal, true); // wasAutoMode=true so auto resumes after
         return;
       }
 
@@ -92,10 +100,9 @@ export function useAutoMode() {
           setMessages(prev => [...prev, {
             role: 'system',
             sender: 'Research',
-            text: research.answer,
             type: 'research',
             query: orchestration.researchQuery,
-            sources: research.sources
+            ...research,
           }]);
         }
       }
@@ -124,7 +131,7 @@ export function useAutoMode() {
       lastAutoSpeakerRef.current = chosenMember.id;
 
       setProcessingStage(`${chosenMember.role} is speaking...`);
-      const agentResponse = await runBoardMemberAgent(orchestration);
+      const agentResponse = await runBoardMemberAgent({ ...orchestration, documents: documents || [] });
 
       if (!agentResponse || !autoModeRef.current) {
         setIsProcessing(false);
@@ -132,11 +139,15 @@ export function useAutoMode() {
         return;
       }
 
+      // Parse optional member action request
+      const { type: actionType, proposal: actionProposal, query: actionQuery, question: actionQuestion, isEdit, docTitle, docContent, docSummary, cleanText } =
+        parseActionRequest ? parseActionRequest(agentResponse) : { type: null, cleanText: agentResponse };
+
       const agentMsg = {
         role: 'assistant',
         sender: chosenMember.name,
         senderRole: chosenMember.role,
-        text: agentResponse,
+        text: cleanText,
         type: 'chat',
         avatar: chosenMember.avatar,
         voice_id: chosenMember.voice_id || ""
@@ -146,6 +157,27 @@ export function useAutoMode() {
       // Alignment check every 3 messages
       if (messages.length % 3 === 0) {
         runAlignmentAgent(agentMsg, boardMembers);
+      }
+
+      // Auto-apply document actions — no modal, no pause
+      if (actionType === 'doc' && applyDocumentAction && chosenMember.canEditDocs !== false) {
+        applyDocumentAction({ isEdit, docTitle, docContent, docSummary }, chosenMember.name);
+      }
+
+      // If member requested a non-doc action, pause auto-mode and surface the request
+      // Suppressed if member has "allow requests" unchecked
+      if (actionType && actionType !== 'doc' && setPendingMemberAction && chosenMember.askUser !== false) {
+        setAutoMode(false);
+        autoModeRef.current = false;
+        setPendingMemberAction({
+          type: actionType,
+          member: chosenMember,
+          proposal: actionProposal,
+          query: actionQuery,
+          question: actionQuestion,
+          wasAutoMode: true,
+        });
+        return;
       }
 
     } catch (error) {

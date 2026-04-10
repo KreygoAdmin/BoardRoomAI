@@ -4,7 +4,7 @@ import { Vote, X, Plus, Sparkles, Loader2 } from 'lucide-react';
 export default function VoteModal({ pendingVote, setPendingVote, runVote, onAISuggest, isLoadingAI = false }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg flex flex-col">
+      <div className="vote-modal-pop bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -24,6 +24,7 @@ export default function VoteModal({ pendingVote, setPendingVote, runVote, onAISu
               value={pendingVote.proposal}
               onChange={(e) => setPendingVote({ ...pendingVote, proposal: e.target.value })}
             />
+            <p className="text-xs text-gray-500 mt-1">Phrase it as a clear decision — e.g. <em>Should we approve the Q3 budget increase?</em></p>
           </div>
 
           {/* Vote Type Toggle */}
@@ -43,6 +44,11 @@ export default function VoteModal({ pendingVote, setPendingVote, runVote, onAISu
                 Multi-Option
               </button>
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {pendingVote.options.length === 0
+                ? 'Simple yes/no — best for approve/reject decisions.'
+                : 'Each member picks one option — best for choosing between distinct paths.'}
+            </p>
           </div>
 
           {/* Options (multi-option mode) */}
@@ -60,6 +66,10 @@ export default function VoteModal({ pendingVote, setPendingVote, runVote, onAISu
                   AI Suggest
                 </button>
               </div>
+              <p className="text-xs text-indigo-400/70 bg-indigo-950/30 border border-indigo-900/40 rounded px-3 py-2 mb-3">
+                <Sparkles size={10} className="inline mr-1 opacity-70" />
+                <strong>AI Suggest</strong> reads the last 15 messages and proposes options that fit the discussion — type a motion first, then click it.
+              </p>
               <div className="space-y-2">
                 {pendingVote.options.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">
@@ -114,7 +124,7 @@ export default function VoteModal({ pendingVote, setPendingVote, runVote, onAISu
           <button
             onClick={() => runVote(pendingVote)}
             disabled={pendingVote.options.length >= 2 && pendingVote.options.some(o => !o.trim())}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-2 rounded text-sm font-bold transition-colors"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-50 text-white px-6 py-2 rounded text-sm font-bold transition-colors"
           >
             <Vote size={14} /> Run Vote
           </button>

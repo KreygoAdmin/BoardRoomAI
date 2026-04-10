@@ -51,7 +51,7 @@ export default function MemberConfigModal({
 
   return (
     <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8">
-      <div className="bg-gray-900 border border-gray-700 w-full md:max-w-4xl h-[90vh] md:h-[600px] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+      <div className="vote-modal-pop bg-gray-900 border border-gray-700 w-full md:max-w-4xl h-[90vh] md:h-[600px] rounded-lg shadow-2xl flex flex-col overflow-hidden">
 
         {/* MODAL HEADER WITH TABS */}
         <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
@@ -64,24 +64,24 @@ export default function MemberConfigModal({
             </button>
             <div className="w-px h-5 bg-gray-700"></div>
             <button
-              onClick={loadMarketplace}
-              className={`text-sm font-bold flex items-center gap-2 whitespace-nowrap ${showMarketplace ? 'text-indigo-400' : 'text-gray-500 hover:text-indigo-300'}`}
+              onClick={handleOpenAIBuilder}
+              className={`text-sm font-bold flex items-center gap-2 whitespace-nowrap ${showAIBuilder ? 'text-purple-400' : 'text-gray-500 hover:text-purple-300'}`}
             >
-              <Globe size={18} /> Marketplace
+              <BrainCircuit size={18} /> AI Builder
             </button>
             <div className="w-px h-5 bg-gray-700"></div>
             <button
               onClick={loadLibrary}
               className={`text-sm font-bold flex items-center gap-2 whitespace-nowrap ${showLibrary ? 'text-amber-400' : 'text-gray-500 hover:text-amber-300'}`}
             >
-              <BookMarked size={18} /> My Library
+              <BookMarked size={18} /> Library
             </button>
             <div className="w-px h-5 bg-gray-700"></div>
             <button
-              onClick={handleOpenAIBuilder}
-              className={`text-sm font-bold flex items-center gap-2 whitespace-nowrap ${showAIBuilder ? 'text-purple-400' : 'text-gray-500 hover:text-purple-300'}`}
+              onClick={loadMarketplace}
+              className={`text-sm font-bold flex items-center gap-2 whitespace-nowrap ${showMarketplace ? 'text-indigo-400' : 'text-gray-500 hover:text-indigo-300'}`}
             >
-              <BrainCircuit size={18} /> AI Builder
+              <Globe size={18} /> Marketplace
             </button>
           </div>
           <button onClick={closeAll} className="flex-shrink-0 ml-2 text-gray-400 hover:text-white"><X size={20} /></button>

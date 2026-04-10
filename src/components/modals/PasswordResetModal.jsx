@@ -4,7 +4,7 @@ import { Key, Loader2 } from 'lucide-react';
 export default function PasswordResetModal({ newPassword, setNewPassword, resetLoading, handlePasswordUpdate, onClose }) {
   return (
     <div className="absolute inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-700 w-full max-w-md p-6 rounded-lg shadow-2xl">
+      <div className="vote-modal-pop bg-gray-900 border border-gray-700 w-full max-w-md p-6 rounded-lg shadow-2xl">
         <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
           <Key size={20} className="text-indigo-400"/> Update Password
         </h2>

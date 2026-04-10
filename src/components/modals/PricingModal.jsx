@@ -4,8 +4,8 @@ import {
   STRIPE_BASE_URL,
   STRIPE_PRO_URL,
   WEBHOOK_SERVER_URL,
-  FREE_PLAN_MESSAGE_LIMIT,
-  PRO_PLAN_MESSAGE_LIMIT,
+  FREE_PLAN_CREDIT_LIMIT,
+  PRO_PLAN_CREDIT_LIMIT,
   FREE_PLAN_MEMBER_LIMIT,
   PRO_PLAN_MEMBER_LIMIT,
   FREE_PLAN_LIBRARY_LIMIT,
@@ -14,18 +14,19 @@ import {
 } from '../../lib/constants.js';
 
 const FEATURES = [
-  { label: 'Messages / month',  free: `${FREE_PLAN_MESSAGE_LIMIT}`,  pro: `${PRO_PLAN_MESSAGE_LIMIT}`,   pioneer: 'Unlimited' },
+  { label: 'Credits / month',   free: `${FREE_PLAN_CREDIT_LIMIT}`,   pro: `${PRO_PLAN_CREDIT_LIMIT}`,    pioneer: 'Unlimited' },
   { label: 'Boardrooms',        free: '1',                            pro: `${PRO_PLAN_BOARDROOM_LIMIT}`, pioneer: 'Unlimited' },
   { label: 'Board members',     free: `${FREE_PLAN_MEMBER_LIMIT}`,   pro: `${PRO_PLAN_MEMBER_LIMIT}`,    pioneer: 'Unlimited' },
   { label: 'Saved agents',      free: `${FREE_PLAN_LIBRARY_LIMIT}`,  pro: `${PRO_PLAN_LIBRARY_LIMIT}`,   pioneer: 'Unlimited' },
   { label: 'Board templates',   free: false,                          pro: true,                           pioneer: true },
-  { label: 'ElevenLabs voices', free: false,                          pro: true,                           pioneer: true },
+  { label: 'ElevenLabs voices', free: true,                           pro: true,                           pioneer: true },
 ];
 
 const TIERS = [
   {
     id: 'free',
     name: 'Free',
+    price: '$0',
     accent: 'border-gray-700',
     headerBg: 'bg-gray-800/60',
     badge: null,
@@ -34,6 +35,7 @@ const TIERS = [
   {
     id: 'pro',
     name: 'Pro',
+    price: '$15/mo',
     accent: 'border-indigo-500',
     headerBg: 'bg-indigo-900/30',
     badge: 'Most Popular',
@@ -42,6 +44,7 @@ const TIERS = [
   {
     id: 'pioneer',
     name: 'Pioneer',
+    price: '$50/mo',
     accent: 'border-yellow-600/60',
     headerBg: 'bg-yellow-900/20',
     badge: 'All-Access',
@@ -84,7 +87,7 @@ export default function PricingModal({ onClose, userPlan, session }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+      <div className="vote-modal-pop bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 flex-shrink-0">
@@ -116,6 +119,9 @@ export default function PricingModal({ onClose, userPlan, session }) {
                   )}
                   <div className={`font-bold text-sm ${tier.id === 'pioneer' ? 'text-yellow-400' : tier.id === 'pro' ? 'text-indigo-300' : 'text-gray-300'}`}>
                     {tier.name}
+                  </div>
+                  <div className={`text-base font-bold mt-1 ${tier.id === 'pioneer' ? 'text-yellow-300' : tier.id === 'pro' ? 'text-indigo-200' : 'text-gray-400'}`}>
+                    {tier.price}
                   </div>
                   {isCurrent && (
                     <div className="text-[9px] text-green-400 font-bold mt-0.5 uppercase tracking-wide">
